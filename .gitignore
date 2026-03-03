@@ -1,0 +1,11 @@
+# Dépendances (dossiers trop lourds)
+node_modules/
+dist/
+
+# Fichiers secrets (NE JAMAIS ENVOYER SUR GIT)
+.env
+backend/.env
+
+# Fichiers de log et divers
+*.log
+.DS_Store

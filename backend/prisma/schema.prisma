@@ -1,0 +1,112 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+// MODULE : IDENTITY & ACCESS (DCU Global)
+
+enum Role {
+  ADMINISTRATEUR
+  UTILISATEUR
+}
+
+model User {
+  id        String    @id @default(uuid())
+  email     String    @unique
+  password  String
+  name      String?
+  role      Role      @default(UTILISATEUR)
+  
+  // Relations
+  projects  Project[] // DCU Global: gérer ces projets de veille
+  alerts    Alert[]   // DCU Global: recevoir alertes
+  createdAt DateTime  @default(now())
+}
+
+// --- MODULE : GESTION DE PROJET (DCU Raffiné Projet) ---
+
+enum Frequency {
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
+model Project {
+  id                String         @id @default(uuid())
+  name              String
+  keywords          String[]       // DCU Raffiné: définir mot clés
+  watchType         String?        // DCU Raffiné: configurer type de veille
+  frequency         Frequency      @default(DAILY) // DCU Raffiné: configurer fréquence d'exécution
+  isActive          Boolean        @default(true)
+  
+  // Relations
+  userId            String
+  user              User           @relation(fields: [userId], references: [id])
+  sources           Source[]       // DCU Raffiné: configurer sources
+  results           WatchResult[]  // DCU Global: visualiser les résultats
+  reports           Report[]       // DCU Global: générer un rapport
+  createdAt         DateTime       @default(now())
+}
+
+model Source {
+  id        String   @id @default(uuid())
+  url       String
+  type      String   // Ex: RSS, Réseaux Sociaux, Web
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id])
+  
+  // DCU Global: Gérer ressources et sources globales (Admin)
+  isGlobal  Boolean  @default(false) 
+}
+
+// --- MODULE : CYCLE DE VEILLE & ETL (DCU Raffiné Cycle) ---
+
+model RawData {
+  id          String   @id @default(uuid())
+  content     String   // DCU Raffiné: stocker en zone raw
+  sourceUrl   String
+  hash        String   @unique // Pour le DCU Raffiné: dédupliquer les données
+  collectedAt DateTime @default(now())
+}
+
+model WatchResult {
+  id              String   @id @default(uuid())
+  title           String
+  summary         String?  // Mentionné précédemment: résumés IA
+  sentiment       String?  // DCU Global: analyser les sentiments
+  trend           String?  // DCU Global: analyser les tendances
+  
+  projectId       String
+  project         Project  @relation(fields: [projectId], references: [id])
+  createdAt       DateTime @default(now())
+}
+
+// --- MODULE : NOTIFICATIONS & RAPPORTS (DCU Global) ---
+
+model Alert {
+  id        String   @id @default(uuid())
+  message   String
+  isRead    Boolean  @default(false)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+}
+
+model Report {
+  id        String   @id @default(uuid())
+  format    String   // DCU Global: PDF/Excel
+  fileUrl   String
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id])
+  createdAt DateTime @default(now())
+}
