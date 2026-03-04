@@ -2,10 +2,8 @@
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 // Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
-  provider = "prisma-client"
+  provider = "prisma-client-js"
   output   = "../generated/prisma"
 }
 
@@ -13,27 +11,27 @@ datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
-// MODULE : IDENTITY & ACCESS (DCU Global)
 
-enum Role {
-  ADMINISTRATEUR
-  UTILISATEUR
+// ==========================================
+// ENUMS (Types et Rôles)
+// ==========================================
+
+enum UserType {
+  INDIVIDUEL
+  ORGANISATION
 }
 
-model User {
-  id        String    @id @default(uuid())
-  email     String    @unique
-  password  String
-  name      String?
-  role      Role      @default(UTILISATEUR)
-  
-  // Relations
-  projects  Project[] // DCU Global: gérer ces projets de veille
-  alerts    Alert[]   // DCU Global: recevoir alertes
-  createdAt DateTime  @default(now())
+enum OrgRole {
+  PROPRIETAIRE
+  EQUIPE_VEILLE
+  LECTEUR
 }
 
-// --- MODULE : GESTION DE PROJET (DCU Raffiné Projet) ---
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+}
 
 enum Frequency {
   DAILY
@@ -41,71 +39,174 @@ enum Frequency {
   MONTHLY
 }
 
+// ==========================================
+// MODULE : IDENTITY & ACCESS (Multi-Tenant)
+// ==========================================
+
+model User {
+  id               String               @id @default(uuid())
+  nom              String               // Changé 'name' par 'nom' selon fiche technique [3]
+  email            String               @unique
+  mot_de_passe     String               // Changé 'password' par 'mot_de_passe' [3]
+  type_utilisateur UserType             // INDIVIDUEL ou ORGANISATION [3, 4]
+  created_at       DateTime             @default(now())
+  updated_at       DateTime             @updatedAt
+
+  // Relations
+  organisations    Organisation[]       @relation("OrgOwner")
+  memberships      MembreOrganisation[]
+  individual_projects Project[]         @relation("UserProjects")
+  refresh_tokens   RefreshToken[]
+  activity_logs    UserActivityLog[]
+  alerts           Alert[]              // Lien vers les alertes personnelles
+}
+
+model Organisation {
+  id          String               @id @default(uuid())
+  nom         String
+  owner_id    String
+  owner       User                 @relation("OrgOwner", fields: [owner_id], references: [id])
+  created_at  DateTime             @default(now())
+  updated_at  DateTime             @updatedAt
+
+  // Relations
+  members     MembreOrganisation[]
+  projects    Project[]
+  invitations InvitationOrganisation[]
+}
+
+model MembreOrganisation {
+  id              String       @id @default(uuid())
+  organisation_id String
+  organisation    Organisation @relation(fields: [organisation_id], references: [id])
+  user_id         String
+  user            User         @relation(fields: [user_id], references: [id])
+  role            OrgRole      // PROPRIETAIRE, EQUIPE_VEILLE, LECTEUR [5]
+  created_at      DateTime     @default(now())
+}
+
+// ==========================================
+// MODULE : GESTION DE PROJET (Isolé)
+// ==========================================
+
 model Project {
   id                String         @id @default(uuid())
-  name              String
-  keywords          String[]       // DCU Raffiné: définir mot clés
-  watchType         String?        // DCU Raffiné: configurer type de veille
-  frequency         Frequency      @default(DAILY) // DCU Raffiné: configurer fréquence d'exécution
+  nom               String         // Changé 'name' par 'nom' [5]
+  description       String?
+  keywords          String[]       
+  watchType         String?        
+  frequency         Frequency      @default(DAILY)
   isActive          Boolean        @default(true)
   
-  // Relations
-  userId            String
-  user              User           @relation(fields: [userId], references: [id])
-  sources           Source[]       // DCU Raffiné: configurer sources
-  results           WatchResult[]  // DCU Global: visualiser les résultats
-  reports           Report[]       // DCU Global: générer un rapport
-  createdAt         DateTime       @default(now())
+  // Isolation Multi-Tenant [5]
+  organisation_id   String?        // Défini si projet d'organisation
+  organisation      Organisation?  @relation(fields: [organisation_id], references: [id])
+  owner_user_id     String?        // Défini si projet individuel
+  owner_user        User?          @relation("UserProjects", fields: [owner_user_id], references: [id])
+
+  // Relations fonctionnelles liées au projet (Isolation [2])
+  sources           Source[]       
+  results           WatchResult[]  
+  reports           Report[]       
+  alerts            Alert[]        
+  created_at        DateTime       @default(now())
+  updated_at        DateTime       @updatedAt
 }
+
+// ==========================================
+// MODULE : SOURCES & COLLECTE (ETL)
+// ==========================================
 
 model Source {
   id        String   @id @default(uuid())
   url       String
-  type      String   // Ex: RSS, Réseaux Sociaux, Web
-  projectId String?
-  project   Project? @relation(fields: [projectId], references: [id])
+  type      String   
+  isGlobal  Boolean  @default(false)
   
-  // DCU Global: Gérer ressources et sources globales (Admin)
-  isGlobal  Boolean  @default(false) 
+  // Isolation
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id])
 }
-
-// --- MODULE : CYCLE DE VEILLE & ETL (DCU Raffiné Cycle) ---
 
 model RawData {
   id          String   @id @default(uuid())
-  content     String   // DCU Raffiné: stocker en zone raw
+  content     String   
   sourceUrl   String
-  hash        String   @unique // Pour le DCU Raffiné: dédupliquer les données
+  hash        String   @unique 
   collectedAt DateTime @default(now())
 }
+
+// ==========================================
+// MODULE : ANALYSE & RESTITUTION
+// ==========================================
 
 model WatchResult {
   id              String   @id @default(uuid())
   title           String
-  summary         String?  // Mentionné précédemment: résumés IA
-  sentiment       String?  // DCU Global: analyser les sentiments
-  trend           String?  // DCU Global: analyser les tendances
-  
+  summary         String?  
+  sentiment       String?  
+  trend           String?  
+
+  // Isolation
   projectId       String
   project         Project  @relation(fields: [projectId], references: [id])
   createdAt       DateTime @default(now())
 }
 
-// --- MODULE : NOTIFICATIONS & RAPPORTS (DCU Global) ---
+// ==========================================
+// MODULE : SÉCURITÉ & TRAÇABILITÉ
+// ==========================================
+
+model InvitationOrganisation {
+  id              String           @id @default(uuid())
+  organisation_id String
+  organisation    Organisation     @relation(fields: [organisation_id], references: [id])
+  email           String
+  role            OrgRole
+  token           String           @unique
+  status          InvitationStatus @default(PENDING)
+  created_at      DateTime         @default(now())
+  expires_at      DateTime
+}
+
+model RefreshToken {
+  id         String   @id @default(uuid())
+  token      String   @unique
+  user_id    String
+  user       User     @relation(fields: [user_id], references: [id])
+  expires_at DateTime
+  created_at DateTime @default(now())
+}
+
+model UserActivityLog {
+  id          String   @id @default(uuid())
+  user_id     String
+  user        User     @relation(fields: [user_id], references: [id])
+  action      String   // LOGIN, CREATE_PROJECT, etc. [2]
+  entity_type String?
+  entity_id   String?
+  created_at  DateTime @default(now())
+}
 
 model Alert {
   id        String   @id @default(uuid())
   message   String
   isRead    Boolean  @default(false)
+  
+  // Double liaison pour isolation et notification
   userId    String
   user      User     @relation(fields: [userId], references: [id])
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id])
   createdAt DateTime @default(now())
 }
 
 model Report {
   id        String   @id @default(uuid())
-  format    String   // DCU Global: PDF/Excel
+  format    String   
   fileUrl   String
+  
+  // Isolation
   projectId String
   project   Project  @relation(fields: [projectId], references: [id])
   createdAt DateTime @default(now())
