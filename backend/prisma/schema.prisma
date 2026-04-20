@@ -1,7 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
 generator client {
   provider = "prisma-client-js"
   output   = "../generated/prisma"
@@ -12,19 +8,28 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ==========================================
-// ENUMS (Types et Rôles)
-// ==========================================
-
 enum UserType {
   INDIVIDUEL
   ORGANISATION
 }
 
+enum UserStatut {
+  ACTIF
+  INACTIF
+  SUSPENDU
+}
+
 enum OrgRole {
   PROPRIETAIRE
+  MANAGER
   EQUIPE_VEILLE
   LECTEUR
+}
+
+enum MembreStatut {
+  ACTIF
+  EN_ATTENTE
+  DESACTIVE
 }
 
 enum InvitationStatus {
@@ -34,45 +39,62 @@ enum InvitationStatus {
 }
 
 enum Frequency {
+  ON_DEMAND
   DAILY
   WEEKLY
   MONTHLY
 }
 
-// ==========================================
-// MODULE : IDENTITY & ACCESS (Multi-Tenant)
-// ==========================================
+enum PerimeterType {
+  GEOGRAPHIC
+  SECTORAL
+}
+
+enum StakeholderRole {
+  DECIDEUR
+  ANALYSTE
+  OBSERVATEUR
+}
+
+enum VeilleType {
+  RSS
+  WEB
+  API
+  DOCUMENT
+}
 
 model User {
-  id               String               @id @default(uuid())
-  nom              String               // Changé 'name' par 'nom' selon fiche technique [3]
-  email            String               @unique
-  mot_de_passe     String               // Changé 'password' par 'mot_de_passe' [3]
-  type_utilisateur UserType             // INDIVIDUEL ou ORGANISATION [3, 4]
-  created_at       DateTime             @default(now())
-  updated_at       DateTime             @updatedAt
+  id               String      @id @default(uuid())
+  nom              String
+  email            String      @unique
+  mot_de_passe     String
+  type_utilisateur UserType
+  statut           UserStatut  @default(ACTIF)
+  created_at       DateTime    @default(now())
+  updated_at       DateTime    @updatedAt
 
-  // Relations
-  organisations    Organisation[]       @relation("OrgOwner")
-  memberships      MembreOrganisation[]
-  individual_projects Project[]         @relation("UserProjects")
-  refresh_tokens   RefreshToken[]
-  activity_logs    UserActivityLog[]
-  alerts           Alert[]              // Lien vers les alertes personnelles
+  organisations       Organisation[]       @relation("OrgOwner")
+  memberships         MembreOrganisation[]
+  individual_projects Project[]            @relation("UserProjects")
+  refresh_tokens      RefreshToken[]
+  activity_logs       UserActivityLog[]
+  alerts              Alert[]
+  folders             Folder[]
+  stakeholders        ProjectStakeholder[]
 }
 
 model Organisation {
-  id          String               @id @default(uuid())
-  nom         String
-  owner_id    String
-  owner       User                 @relation("OrgOwner", fields: [owner_id], references: [id])
-  created_at  DateTime             @default(now())
-  updated_at  DateTime             @updatedAt
+  id         String   @id @default(uuid())
+  nom        String
+  owner_id   String
+  owner      User     @relation("OrgOwner", fields: [owner_id], references: [id])
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
 
-  // Relations
   members     MembreOrganisation[]
   projects    Project[]
   invitations InvitationOrganisation[]
+  folders     Folder[]
 }
 
 model MembreOrganisation {
@@ -81,81 +103,204 @@ model MembreOrganisation {
   organisation    Organisation @relation(fields: [organisation_id], references: [id])
   user_id         String
   user            User         @relation(fields: [user_id], references: [id])
-  role            OrgRole      // PROPRIETAIRE, EQUIPE_VEILLE, LECTEUR [5]
+  role            OrgRole
+  statut          MembreStatut @default(ACTIF)
   created_at      DateTime     @default(now())
+  updated_at      DateTime     @updatedAt
 }
 
-// ==========================================
-// MODULE : GESTION DE PROJET (Isolé)
-// ==========================================
+model Folder {
+  id              String        @id @default(uuid())
+  nom             String
+  description     String?
+  owner_user_id   String?
+  owner_user      User?         @relation(fields: [owner_user_id], references: [id])
+  organisation_id String?
+  organisation    Organisation? @relation(fields: [organisation_id], references: [id])
+  created_at      DateTime      @default(now())
+  updated_at      DateTime      @updatedAt
+
+  projects Project[]
+}
 
 model Project {
-  id                String         @id @default(uuid())
-  nom               String         // Changé 'name' par 'nom' [5]
-  description       String?
-  keywords          String[]       
-  watchType         String?        
-  frequency         Frequency      @default(DAILY)
-  isActive          Boolean        @default(true)
-  
-  // Isolation Multi-Tenant [5]
-  organisation_id   String?        // Défini si projet d'organisation
-  organisation      Organisation?  @relation(fields: [organisation_id], references: [id])
-  owner_user_id     String?        // Défini si projet individuel
-  owner_user        User?          @relation("UserProjects", fields: [owner_user_id], references: [id])
+  id              String      @id @default(uuid())
+  nom             String
+  description     String?
+  veille_type     VeilleType  @default(RSS)
+  keywords        String[]
+  frequency       Frequency   @default(DAILY)
+  start_date      DateTime?
+  end_date        DateTime?
+  isActive        Boolean     @default(true)
+  is_deleted      Boolean     @default(false)
 
-  // Relations fonctionnelles liées au projet (Isolation [2])
-  sources           Source[]       
-  results           WatchResult[]  
-  reports           Report[]       
-  alerts            Alert[]        
-  created_at        DateTime       @default(now())
-  updated_at        DateTime       @updatedAt
+  folder_id       String?
+  folder          Folder?       @relation(fields: [folder_id], references: [id])
+  organisation_id String?
+  organisation    Organisation? @relation(fields: [organisation_id], references: [id])
+  owner_user_id   String?
+  owner_user      User?         @relation("UserProjects", fields: [owner_user_id], references: [id])
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  sources      Source[]
+  rawData      RawData[]
+  results      WatchResult[]
+  reports      Report[]
+  alerts       Alert[]
+  objectives   ProjectObjective[]
+  perimeters   ProjectPerimeter[]
+  stakeholders ProjectStakeholder[]
 }
 
-// ==========================================
-// MODULE : SOURCES & COLLECTE (ETL)
-// ==========================================
+model ProjectObjective {
+  id          String   @id @default(uuid())
+  content     String
+  priority    Int      @default(1)
+  project_id  String
+  project     Project  @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  axes ProjectAxis[]
+}
+
+model ProjectAxis {
+  id           String          @id @default(uuid())
+  name         String
+  description  String?
+  priority     Int             @default(1)
+  objective_id String
+  objective    ProjectObjective @relation(fields: [objective_id], references: [id], onDelete: Cascade)
+  created_at   DateTime        @default(now())
+  updated_at   DateTime        @updatedAt
+
+  hypotheses ProjectHypothesis[]
+}
+
+model ProjectHypothesis {
+  id         String      @id @default(uuid())
+  content    String
+  priority   Int         @default(1)
+  statut     String      @default("OPEN")
+  axis_id    String
+  axis       ProjectAxis @relation(fields: [axis_id], references: [id], onDelete: Cascade)
+  created_at DateTime    @default(now())
+  updated_at DateTime    @updatedAt
+
+  collection_plans   CollectionPlan[]
+  hypothesis_perimeters HypothesisPerimeter[]
+}
+
+model ProjectPerimeter {
+  id                String        @id @default(uuid())
+  name              String
+  type              PerimeterType
+  parent_id         String?
+  parent            ProjectPerimeter?  @relation("PerimeterHierarchy", fields: [parent_id], references: [id])
+  children          ProjectPerimeter[] @relation("PerimeterHierarchy")
+  project_id        String
+  project           Project       @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  created_at        DateTime      @default(now())
+
+  hypothesis_perimeters HypothesisPerimeter[]
+}
+
+model HypothesisPerimeter {
+  id             String           @id @default(uuid())
+  hypothesis_id  String
+  hypothesis     ProjectHypothesis @relation(fields: [hypothesis_id], references: [id], onDelete: Cascade)
+  perimeter_id   String
+  perimeter      ProjectPerimeter  @relation(fields: [perimeter_id], references: [id], onDelete: Cascade)
+  created_at     DateTime          @default(now())
+}
+
+model CollectionPlan {
+  id                    String            @id @default(uuid())
+  question              String
+  frequency             Frequency         @default(DAILY)
+  collection_start_date DateTime?
+  collection_end_date   DateTime?
+  hypothesis_id         String
+  hypothesis            ProjectHypothesis @relation(fields: [hypothesis_id], references: [id], onDelete: Cascade)
+  created_at            DateTime          @default(now())
+  updated_at            DateTime          @updatedAt
+
+  sources  CollectionPlanSource[]
+  keywords CollectionPlanKeyword[]
+}
+
+model CollectionPlanSource {
+  id                 String         @id @default(uuid())
+  source_type        String
+  source_label       String
+  source_url         String
+  collection_plan_id String
+  collection_plan    CollectionPlan @relation(fields: [collection_plan_id], references: [id], onDelete: Cascade)
+  created_at         DateTime       @default(now())
+}
+
+model CollectionPlanKeyword {
+  id                 String         @id @default(uuid())
+  keyword            String
+  keyword_type       String         @default("PRINCIPAL")
+  collection_plan_id String
+  collection_plan    CollectionPlan @relation(fields: [collection_plan_id], references: [id], onDelete: Cascade)
+  created_at         DateTime       @default(now())
+}
+
+model ProjectStakeholder {
+  id         String          @id @default(uuid())
+  role       StakeholderRole
+  project_id String
+  project    Project         @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  user_id    String
+  user       User            @relation(fields: [user_id], references: [id])
+  created_at DateTime        @default(now())
+}
 
 model Source {
-  id        String   @id @default(uuid())
+  id        String    @id @default(uuid())
+  name      String
   url       String
-  type      String   
-  isGlobal  Boolean  @default(false)
-  
-  // Isolation
   projectId String
-  project   Project  @relation(fields: [projectId], references: [id])
+  project   Project   @relation(fields: [projectId], references: [id])
+  rawData   RawData[]
 }
 
 model RawData {
   id          String   @id @default(uuid())
-  content     String   
-  sourceUrl   String
-  hash        String   @unique 
-  collectedAt DateTime @default(now())
-}
+  sourceId    String
+  source      Source   @relation(fields: [sourceId], references: [id])
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id])
+  title       String
+  url         String
+  content     String   @db.Text
+  publishedAt DateTime
+  contentHash String   @unique
+  metadata    Json?
+  createdAt   DateTime @default(now())
 
-// ==========================================
-// MODULE : ANALYSE & RESTITUTION
-// ==========================================
+  watchResult WatchResult?
+}
 
 model WatchResult {
-  id              String   @id @default(uuid())
-  title           String
-  summary         String?  
-  sentiment       String?  
-  trend           String?  
-
-  // Isolation
-  projectId       String
-  project         Project  @relation(fields: [projectId], references: [id])
-  createdAt       DateTime @default(now())
+  id        String   @id @default(uuid())
+  title     String
+  summary   String?
+  sentiment String?
+  trend     String?
+  keywords  String[]
+  sourceUrl String?
+  rawDataId String?  @unique
+  rawData   RawData? @relation(fields: [rawDataId], references: [id])
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id])
+  createdAt DateTime @default(now())
 }
-
-// ==========================================
-// MODULE : SÉCURITÉ & TRAÇABILITÉ
-// ==========================================
 
 model InvitationOrganisation {
   id              String           @id @default(uuid())
@@ -182,9 +327,9 @@ model UserActivityLog {
   id          String   @id @default(uuid())
   user_id     String
   user        User     @relation(fields: [user_id], references: [id])
-  action      String   // LOGIN, CREATE_PROJECT, etc. [2]
-  entity_type String?
-  entity_id   String?
+  action      String
+  entityType  String?
+  entityId    String?
   created_at  DateTime @default(now())
 }
 
@@ -192,8 +337,6 @@ model Alert {
   id        String   @id @default(uuid())
   message   String
   isRead    Boolean  @default(false)
-  
-  // Double liaison pour isolation et notification
   userId    String
   user      User     @relation(fields: [userId], references: [id])
   projectId String
@@ -203,10 +346,8 @@ model Alert {
 
 model Report {
   id        String   @id @default(uuid())
-  format    String   
+  format    String
   fileUrl   String
-  
-  // Isolation
   projectId String
   project   Project  @relation(fields: [projectId], references: [id])
   createdAt DateTime @default(now())

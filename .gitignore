@@ -1,11 +1,22 @@
-# Dépendances (dossiers trop lourds)
+# Node
 node_modules/
+npm-debug.log*
+
+# Build
 dist/
+build/
+.next/
 
-# Fichiers secrets (NE JAMAIS ENVOYER SUR GIT)
-.env
+# Prisma generated
+backend/generated/
+
+# Environment variables (IMPORTANT - ne jamais commiter)
 backend/.env
+.env
 
-# Fichiers de log et divers
+# Docker volumes
 *.log
+
+# OS
 .DS_Store
+Thumbs.db
