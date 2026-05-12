@@ -33,24 +33,31 @@ export class CollectionPlansService {
     if (!data.question) throw new BadRequestException('La question est obligatoire');
     if (!data.frequency) throw new BadRequestException('La fréquence est obligatoire');
 
-    if (data.collection_end_date && project.end_date) {
-      if (new Date(data.collection_end_date) > new Date(project.end_date)) {
-        throw new BadRequestException('collection_end_date doit être <= project.end_date');
-      }
+    const startDate = data.collection_start_date ? new Date(data.collection_start_date) : new Date();
+    const endDate = data.collection_end_date ? new Date(data.collection_end_date) : null;
+
+    
+    if (endDate && endDate < startDate) {
+      throw new BadRequestException('La date de fin de collecte ne peut pas être antérieure au début.');
     }
-    if (data.collection_start_date && project.start_date) {
-      if (new Date(data.collection_start_date) < new Date(project.start_date)) {
-        throw new BadRequestException('collection_start_date doit être >= project.start_date');
-      }
+
+    
+    if (endDate && project.end_date && endDate > new Date(project.end_date)) {
+      throw new BadRequestException('La date de fin de collecte doit être inférieure ou égale à celle du projet.');
+    }
+    if (startDate < new Date(project.start_date)) {
+      throw new BadRequestException('La date de début de collecte doit être supérieure ou égale à celle du projet.');
     }
 
     const plan = await this.prisma.collectionPlan.create({
       data: {
         question: data.question,
         frequency: data.frequency,
-        collection_start_date: data.collection_start_date ? new Date(data.collection_start_date) : null,
-        collection_end_date: data.collection_end_date ? new Date(data.collection_end_date) : null,
+        collection_start_date: startDate,
+        collection_end_date: endDate,
         hypothesis_id: hypothesisId,
+        
+        next_run_at: new Date(), 
       },
     });
 
@@ -68,19 +75,42 @@ export class CollectionPlansService {
   }
 
   async updateCollectionPlan(planId: string, userId: string, data: any) {
-    const plan = await this.prisma.collectionPlan.findUnique({ where: { id: planId } });
+    const plan = await this.prisma.collectionPlan.findUnique({ 
+      where: { id: planId },
+      include: { hypothesis: { include: { axis: { include: { objective: { include: { project: true } } } } } } }
+    });
+
     if (!plan) throw new NotFoundException('Plan de collecte introuvable');
     await this.checkHypothesisAccess(plan.hypothesis_id, userId);
 
-    return this.prisma.collectionPlan.update({
+    const project = plan.hypothesis.axis.objective.project;
+    const newStartDate = data.collection_start_date ? new Date(data.collection_start_date) : plan.collection_start_date;
+    const newEndDate = data.collection_end_date ? new Date(data.collection_end_date) : plan.collection_end_date;
+
+    
+    if (newEndDate && newStartDate && new Date(newEndDate) < new Date(newStartDate)) {
+      throw new BadRequestException('La date de fin de collecte ne peut pas être antérieure au début.');
+    }
+
+    
+    if (newEndDate && project.end_date && new Date(newEndDate) > new Date(project.end_date)) {
+      throw new BadRequestException('La date de fin de collecte dépasse la fin du projet.');
+    }
+
+    const updated = await this.prisma.collectionPlan.update({
       where: { id: planId },
       data: {
         question: data.question,
         frequency: data.frequency,
         collection_start_date: data.collection_start_date ? new Date(data.collection_start_date) : undefined,
         collection_end_date: data.collection_end_date ? new Date(data.collection_end_date) : undefined,
+
+        next_run_at: data.frequency ? new Date() : undefined,
       },
     });
+
+    await this.logActivity(userId, 'UPDATE_COLLECTION_PLAN', 'collection_plan', planId);
+    return updated;
   }
 
   async deleteCollectionPlan(planId: string, userId: string) {

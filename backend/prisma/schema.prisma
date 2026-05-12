@@ -56,7 +56,17 @@ enum StakeholderRole {
   OBSERVATEUR
 }
 
-enum VeilleType {
+enum MonitoringType {
+  TECHNOLOGICAL
+  COMPETITIVE
+  REGULATORY
+  GEOPOLITICAL
+  ECONOMIC
+  SCIENTIFIC
+  CYBERSECURITY
+}
+
+enum SourceType {
   RSS
   WEB
   API
@@ -64,14 +74,14 @@ enum VeilleType {
 }
 
 model User {
-  id               String      @id @default(uuid())
+  id               String     @id @default(uuid())
   nom              String
-  email            String      @unique
+  email            String     @unique
   mot_de_passe     String
   type_utilisateur UserType
-  statut           UserStatut  @default(ACTIF)
-  created_at       DateTime    @default(now())
-  updated_at       DateTime    @updatedAt
+  statut           UserStatut @default(ACTIF)
+  created_at       DateTime   @default(now())
+  updated_at       DateTime   @updatedAt
 
   organisations       Organisation[]       @relation("OrgOwner")
   memberships         MembreOrganisation[]
@@ -124,16 +134,19 @@ model Folder {
 }
 
 model Project {
-  id              String      @id @default(uuid())
+  id              String         @id @default(uuid())
   nom             String
   description     String?
-  veille_type     VeilleType  @default(RSS)
+  monitoring_type MonitoringType @default(TECHNOLOGICAL)
   keywords        String[]
-  frequency       Frequency   @default(DAILY)
-  start_date      DateTime?
-  end_date        DateTime?
-  isActive        Boolean     @default(true)
-  is_deleted      Boolean     @default(false)
+  frequency       Frequency      @default(DAILY)
+
+  start_date DateTime  @default(now())
+  end_date   DateTime?
+
+  isActive   Boolean   @default(true)
+  is_deleted Boolean   @default(false)
+  deleted_at DateTime? // Pour un vrai soft delete
 
   folder_id       String?
   folder          Folder?       @relation(fields: [folder_id], references: [id])
@@ -150,32 +163,33 @@ model Project {
   results      WatchResult[]
   reports      Report[]
   alerts       Alert[]
-  objectives   ProjectObjective[]
   perimeters   ProjectPerimeter[]
+  objectives   ProjectObjective[]
+  scopes       Scope[] // Nouvelle relation périmètre
   stakeholders ProjectStakeholder[]
 }
 
 model ProjectObjective {
-  id          String   @id @default(uuid())
-  content     String
-  priority    Int      @default(1)
-  project_id  String
-  project     Project  @relation(fields: [project_id], references: [id], onDelete: Cascade)
-  created_at  DateTime @default(now())
-  updated_at  DateTime @updatedAt
+  id         String   @id @default(uuid())
+  content    String
+  priority   Int      @default(1)
+  project_id String
+  project    Project  @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
 
   axes ProjectAxis[]
 }
 
 model ProjectAxis {
-  id           String          @id @default(uuid())
+  id           String           @id @default(uuid())
   name         String
   description  String?
-  priority     Int             @default(1)
+  priority     Int              @default(1)
   objective_id String
   objective    ProjectObjective @relation(fields: [objective_id], references: [id], onDelete: Cascade)
-  created_at   DateTime        @default(now())
-  updated_at   DateTime        @updatedAt
+  created_at   DateTime         @default(now())
+  updated_at   DateTime         @updatedAt
 
   hypotheses ProjectHypothesis[]
 }
@@ -190,46 +204,70 @@ model ProjectHypothesis {
   created_at DateTime    @default(now())
   updated_at DateTime    @updatedAt
 
-  collection_plans   CollectionPlan[]
+  collection_plans      CollectionPlan[]
   hypothesis_perimeters HypothesisPerimeter[]
 }
 
 model ProjectPerimeter {
-  id                String        @id @default(uuid())
-  name              String
-  type              PerimeterType
-  parent_id         String?
-  parent            ProjectPerimeter?  @relation("PerimeterHierarchy", fields: [parent_id], references: [id])
-  children          ProjectPerimeter[] @relation("PerimeterHierarchy")
-  project_id        String
-  project           Project       @relation(fields: [project_id], references: [id], onDelete: Cascade)
-  created_at        DateTime      @default(now())
 
+  id           String        @id @default(uuid())
+  name         String?      
+
+  type         PerimeterType 
+  value        String?       // Valeur optionnelle
+  project_id   String
+  project      Project       @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  objective_id String?   
+  axis_id      String?   
+  created_at   DateTime      @default(now())
   hypothesis_perimeters HypothesisPerimeter[]
+
 }
 
 model HypothesisPerimeter {
-  id             String           @id @default(uuid())
-  hypothesis_id  String
-  hypothesis     ProjectHypothesis @relation(fields: [hypothesis_id], references: [id], onDelete: Cascade)
-  perimeter_id   String
-  perimeter      ProjectPerimeter  @relation(fields: [perimeter_id], references: [id], onDelete: Cascade)
-  created_at     DateTime          @default(now())
+  id            String            @id @default(uuid())
+  hypothesis_id String
+  hypothesis    ProjectHypothesis @relation(fields: [hypothesis_id], references: [id], onDelete: Cascade)
+  perimeter_id  String
+  perimeter     ProjectPerimeter  @relation(fields: [perimeter_id], references: [id], onDelete: Cascade)
+  created_at    DateTime          @default(now())
 }
 
 model CollectionPlan {
   id                    String            @id @default(uuid())
   question              String
   frequency             Frequency         @default(DAILY)
-  collection_start_date DateTime?
+  collection_start_date DateTime          @default(now())
   collection_end_date   DateTime?
-  hypothesis_id         String
-  hypothesis            ProjectHypothesis @relation(fields: [hypothesis_id], references: [id], onDelete: Cascade)
-  created_at            DateTime          @default(now())
-  updated_at            DateTime          @updatedAt
 
-  sources  CollectionPlanSource[]
-  keywords CollectionPlanKeyword[]
+  is_active   Boolean   @default(true)
+  last_run_at DateTime?
+  // Correction ici : mettre @default(now()) pour que le scheduler le voie tout de suite
+  next_run_at DateTime? @default(now()) 
+
+  hypothesis_id String
+  hypothesis    ProjectHypothesis @relation(fields: [hypothesis_id], references: [id], onDelete: Cascade)
+  
+  created_at    DateTime          @default(now())
+  updated_at    DateTime          @updatedAt
+
+  sources       CollectionPlanSource[]
+  jobs          CollectionJob[]
+  keywords      CollectionPlanKeyword[]
+}
+
+model Scope {
+  id    String        @id @default(uuid())
+  type  PerimeterType
+  value String
+
+  project_id String
+  project    Project @relation(fields: [project_id], references: [id], onDelete: Cascade)
+
+  objective_id String?
+  axis_id      String?
+
+  created_at DateTime @default(now())
 }
 
 model CollectionPlanSource {
@@ -264,7 +302,8 @@ model ProjectStakeholder {
 model Source {
   id        String    @id @default(uuid())
   name      String
-  url       String
+  url       String?
+  type      SourceType @default(WEB)
   projectId String
   project   Project   @relation(fields: [projectId], references: [id])
   rawData   RawData[]
@@ -324,13 +363,13 @@ model RefreshToken {
 }
 
 model UserActivityLog {
-  id          String   @id @default(uuid())
-  user_id     String
-  user        User     @relation(fields: [user_id], references: [id])
-  action      String
-  entityType  String?
-  entityId    String?
-  created_at  DateTime @default(now())
+  id         String   @id @default(uuid())
+  user_id    String
+  user       User     @relation(fields: [user_id], references: [id])
+  action     String
+  entityType String?
+  entityId   String?
+  created_at DateTime @default(now())
 }
 
 model Alert {
@@ -351,4 +390,45 @@ model Report {
   projectId String
   project   Project  @relation(fields: [projectId], references: [id])
   createdAt DateTime @default(now())
+}
+
+enum JobStatus {
+  PENDING
+  RUNNING
+  DONE
+  FAILED
+}
+
+enum TriggerType {
+  MANUAL
+  SCHEDULED
+}
+
+model CollectionJob {
+  id                 String         @id @default(uuid())
+  collection_plan_id String
+  collection_plan    CollectionPlan @relation(fields: [collection_plan_id], references: [id], onDelete: Cascade)
+  status             JobStatus      @default(PENDING)
+  trigger_type       TriggerType    @default(MANUAL)
+  started_at         DateTime?
+  finished_at        DateTime?
+  logs               Json?
+  created_at         DateTime       @default(now())
+}
+
+model RawItem {
+  id                 String    @id @default(uuid())
+  project_id         String
+  collection_plan_id String
+  source_type        String
+  source_name        String?
+  source_url         String?
+  article_url        String?
+  title              String?
+  content_raw        String?   @db.Text
+  published_at       DateTime?
+  fetched_at         DateTime  @default(now())
+  hash               String    @unique
+  metadata           Json?
+  created_at         DateTime  @default(now())
 }

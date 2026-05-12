@@ -17,6 +17,9 @@ import { HypothesesModule } from './hypotheses/hypotheses.module';
 import { PerimetersModule } from './perimeters/perimeters.module';
 import { CollectionPlansModule } from './collection-plans/collection-plans.module';
 import { StakeholdersModule } from './stakeholders/stakeholders.module';
+import { SchedulerModule } from './scheduler/scheduler.module';
+import { CollectionEngineModule } from './collection-engine/collection-engine.module';
+
 
 @Module({
   imports: [
@@ -36,6 +39,8 @@ import { StakeholdersModule } from './stakeholders/stakeholders.module';
     PerimetersModule,
     CollectionPlansModule,
     StakeholdersModule,
+    SchedulerModule,
+    CollectionEngineModule,
   ],
   controllers: [AppController],
   providers: [AppService],

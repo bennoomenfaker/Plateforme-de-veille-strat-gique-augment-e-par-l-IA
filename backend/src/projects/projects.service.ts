@@ -1,31 +1,48 @@
-import { Injectable, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { Injectable, ForbiddenException, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class ProjectsService {
   constructor(private prisma: PrismaService) {}
 
+  /**
+   * Vérifie si l'utilisateur a le droit d'accéder ou modifier le projet
+   */
   private async checkAccess(projectId: string, userId: string) {
     const project = await this.prisma.project.findUnique({
       where: { id: projectId },
       include: { organisation: { include: { members: true } } },
     });
     if (!project) throw new NotFoundException('Projet introuvable');
+    
+    // Propriétaire direct
     if (project.owner_user_id === userId) return project;
-    if (project.organisation?.members.some(m => m.user_id === userId && m.statut === 'ACTIF')) return project;
+    
+    // Membre de l'organisation avec statut actif
+    if (project.organisation?.members.some(m => m.user_id === userId && m.statut === 'ACTIF')) {
+      return project;
+    }
+    
     throw new ForbiddenException('Accès refusé à ce projet');
   }
 
+  /**
+   * Création d'un projet individuel (Sprint 1.2: Dates verrouillées)
+   */
   async createProject(data: any, userId: string) {
+    if (data.end_date) {
+      throw new BadRequestException('La date de clôture ne peut pas être définie à la création.');
+    }
+
     const project = await this.prisma.project.create({
       data: {
         nom: data.nom,
         description: data.description,
-        veille_type: data.veille_type || 'RSS',
+        monitoring_type: data.monitoring_type || 'TECHNOLOGICAL',
         keywords: data.keywords || [],
         frequency: data.frequency || 'DAILY',
-        start_date: data.start_date ? new Date(data.start_date) : null,
-        end_date: data.end_date ? new Date(data.end_date) : null,
+        // start_date est auto-généré par @default(now()) dans Prisma
+        end_date: null, 
         folder_id: data.folder_id || null,
         owner_user_id: userId,
       },
@@ -34,21 +51,32 @@ export class ProjectsService {
     return project;
   }
 
+  /**
+   * Création d'un projet d'organisation
+   */
   async createOrgProject(data: any, userId: string, organisationId: string) {
     const membre = await this.prisma.membreOrganisation.findFirst({
-      where: { organisation_id: organisationId, user_id: userId, role: { in: ['PROPRIETAIRE', 'MANAGER'] }, statut: 'ACTIF' },
+      where: { 
+        organisation_id: organisationId, 
+        user_id: userId, 
+        role: { in: ['PROPRIETAIRE', 'MANAGER'] }, 
+        statut: 'ACTIF' 
+      },
     });
-    if (!membre) throw new ForbiddenException('Accès insuffisant pour créer un projet');
+    if (!membre) throw new ForbiddenException('Accès insuffisant pour créer un projet d\'organisation');
+
+    if (data.end_date) {
+      throw new BadRequestException('La date de clôture ne peut pas être définie à la création.');
+    }
 
     const project = await this.prisma.project.create({
       data: {
         nom: data.nom,
         description: data.description,
-        veille_type: data.veille_type || 'RSS',
+        monitoring_type: data.monitoring_type || 'TECHNOLOGICAL',
         keywords: data.keywords || [],
         frequency: data.frequency || 'DAILY',
-        start_date: data.start_date ? new Date(data.start_date) : null,
-        end_date: data.end_date ? new Date(data.end_date) : null,
+        end_date: null,
         folder_id: data.folder_id || null,
         organisation_id: organisationId,
       },
@@ -57,10 +85,16 @@ export class ProjectsService {
     return project;
   }
 
+
   async getMyProjects(userId: string) {
+    const commonFilter = { is_deleted: false, isActive: true };
+
     const individualProjects = await this.prisma.project.findMany({
-      where: { owner_user_id: userId, isActive: true, is_deleted: false },
-      include: { sources: true, folder: true, objectives: { include: { axes: { include: { hypotheses: true } } } } },
+      where: { ...commonFilter, owner_user_id: userId },
+      include: { 
+        folder: true, 
+        objectives: { include: { axes: { include: { hypotheses: true } } } } 
+      },
     });
 
     const memberships = await this.prisma.membreOrganisation.findMany({
@@ -71,54 +105,78 @@ export class ProjectsService {
 
     const orgProjects = orgIds.length > 0
       ? await this.prisma.project.findMany({
-          where: { organisation_id: { in: orgIds }, isActive: true, is_deleted: false },
-          include: { sources: true, folder: true, organisation: { select: { nom: true } }, objectives: { include: { axes: { include: { hypotheses: true } } } } },
+          where: { ...commonFilter, organisation_id: { in: orgIds } },
+          include: { 
+            folder: true, 
+            organisation: { select: { nom: true } }, 
+            objectives: { include: { axes: { include: { hypotheses: true } } } } 
+          },
         })
       : [];
 
     return { individual: individualProjects, organisation: orgProjects };
   }
 
+/**
+   * Détail complet d'un projet
+   */
   async getProject(id: string, userId: string) {
-    const project = await this.checkAccess(id, userId);
-    return this.prisma.project.findUnique({
-      where: { id },
-      include: {
-        sources: true,
-        folder: true,
-        organisation: { select: { nom: true } },
-        objectives: {
-          include: {
-            axes: {
-              include: {
-                hypotheses: {
-                  include: {
-                    collection_plans: { include: { sources: true, keywords: true } },
-                    hypothesis_perimeters: { include: { perimeter: true } },
+  await this.checkAccess(id, userId);
+  return this.prisma.project.findUnique({
+    where: { id },
+    include: {
+      sources: true,
+      folder: true,
+      // CORRECTIF : On récupère tous les périmètres (GEOGRAPHIC et SECTORAL)
+      // sans chercher de parentId ou de children car ils sont désormais au même niveau.
+      perimeters: true, 
+      organisation: { select: { nom: true } },
+      objectives: {
+        include: {
+          axes: {
+            include: {
+              hypotheses: {
+                include: {
+                  collection_plans: { 
+                    include: { sources: true, keywords: true } 
                   },
+                  // Rappel : l'inclusion de perimeters ici a été supprimée
+                  // pour éviter l'erreur de type sur ProjectHypothesis.
                 },
               },
             },
           },
-          orderBy: { priority: 'asc' },
         },
-        perimeters: { where: { parent_id: null }, include: { children: true } },
-        stakeholders: { include: { user: { select: { id: true, nom: true, email: true } } } },
+        orderBy: { priority: 'asc' },
       },
-    });
-  }
+      stakeholders: { 
+        include: { user: { select: { id: true, nom: true, email: true } } } 
+      },
+    },
+  });
+}
 
+  /**
+   * Mise à jour    */
   async updateProject(id: string, userId: string, data: any) {
-    await this.checkAccess(id, userId);
+    const project = await this.checkAccess(id, userId);
+
+    if (data.end_date) {
+      const newEndDate = new Date(data.end_date);
+      // Comparaison avec la date de début réelle du projet
+      if (newEndDate < project.start_date) {
+        throw new BadRequestException('La date de fin ne peut pas être antérieure à la date de début.');
+      }
+    }
+
     const updated = await this.prisma.project.update({
       where: { id },
       data: {
         nom: data.nom,
         description: data.description,
-        veille_type: data.veille_type,
+        monitoring_type: data.monitoring_type,
         keywords: data.keywords,
         frequency: data.frequency,
-        start_date: data.start_date ? new Date(data.start_date) : undefined,
         end_date: data.end_date ? new Date(data.end_date) : undefined,
         folder_id: data.folder_id,
       },
@@ -127,6 +185,25 @@ export class ProjectsService {
     return updated;
   }
 
+  /**
+   * Clôture formelle 
+   */
+  async closeProject(id: string, userId: string) {
+    await this.checkAccess(id, userId);
+    const closed = await this.prisma.project.update({
+      where: { id },
+      data: { 
+        isActive: false, 
+        end_date: new Date() 
+      },
+    });
+    await this.logActivity(userId, 'CLOSE_PROJECT', 'project', id);
+    return closed;
+  }
+
+  /**
+   * Archive un projet sans le supprimer
+   */
   async archiveProject(id: string, userId: string) {
     await this.checkAccess(id, userId);
     const archived = await this.prisma.project.update({
@@ -137,11 +214,20 @@ export class ProjectsService {
     return { message: 'Projet archivé', project: archived };
   }
 
+  /**
+   * Soft Delete 
+   */
   async deleteProject(id: string, userId: string) {
     await this.checkAccess(id, userId);
-    await this.prisma.project.update({ where: { id }, data: { is_deleted: true } });
+    await this.prisma.project.update({ 
+      where: { id }, 
+      data: { 
+        is_deleted: true,
+        deleted_at: new Date() 
+      } 
+    });
     await this.logActivity(userId, 'DELETE_PROJECT', 'project', id);
-    return { message: 'Projet supprimé' };
+    return { message: 'Projet supprimé avec succès' };
   }
 
   async getArchivedProjects(userId: string) {
@@ -152,7 +238,9 @@ export class ProjectsService {
 
   private async logActivity(userId: string, action: string, entityType: string, entityId: string) {
     try {
-      await this.prisma.userActivityLog.create({ data: { user_id: userId, action, entityType, entityId } });
+      await this.prisma.userActivityLog.create({ 
+        data: { user_id: userId, action, entityType, entityId } 
+      });
     } catch {}
   }
 }

@@ -19,19 +19,17 @@ export class PerimetersService {
   async createPerimeter(projectId: string, userId: string, data: any) {
     await this.checkProjectAccess(projectId, userId);
 
-    if (data.parent_id) {
-      const parent = await this.prisma.projectPerimeter.findUnique({ where: { id: data.parent_id } });
-      if (!parent) throw new NotFoundException('Périmètre parent introuvable');
-      if (parent.type !== data.type) throw new BadRequestException('Le parent doit être du même type');
-      if (parent.project_id !== projectId) throw new BadRequestException('Le parent doit appartenir au même projet');
-    }
+    const type = data.type === 'SECTORAL' ? 'SECTORAL' : 'GEOGRAPHIC';
+    const name = data.name || data.value || 'Périmètre';
 
     return this.prisma.projectPerimeter.create({
       data: {
-        name: data.name,
-        type: data.type,
-        parent_id: data.parent_id || null,
+        name,
+        type,
+        value: data.value || null,
         project_id: projectId,
+        objective_id: data.objective_id || null,
+        axis_id: data.axis_id || null,
       },
     });
   }
@@ -39,23 +37,18 @@ export class PerimetersService {
   async getPerimeters(projectId: string, userId: string) {
     await this.checkProjectAccess(projectId, userId);
     return this.prisma.projectPerimeter.findMany({
-      where: { project_id: projectId, parent_id: null },
-      include: { children: { include: { children: true } } },
+      where: { project_id: projectId },
+      orderBy: { created_at: 'desc' },
     });
   }
 
   async assignToHypothesis(hypothesisId: string, perimeterId: string, userId: string) {
-    const hypothesis = await this.prisma.projectHypothesis.findUnique({
-      where: { id: hypothesisId },
-      include: { axis: { include: { objective: { include: { project: true } } } } },
-    });
+    const hypothesis = await this.prisma.projectHypothesis.findUnique({ where: { id: hypothesisId } });
     if (!hypothesis) throw new NotFoundException('Hypothèse introuvable');
-
     const existing = await this.prisma.hypothesisPerimeter.findFirst({
       where: { hypothesis_id: hypothesisId, perimeter_id: perimeterId },
     });
     if (existing) throw new BadRequestException('Périmètre déjà assigné');
-
     return this.prisma.hypothesisPerimeter.create({
       data: { hypothesis_id: hypothesisId, perimeter_id: perimeterId },
     });
