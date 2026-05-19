@@ -1,73 +1,75 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
+import { CollectionManager } from '../collection-engine/collection.manager';
 
 @Injectable()
 export class SchedulerService {
   private readonly logger = new Logger(SchedulerService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private collectionManager: CollectionManager,
+  ) {}
 
-  // S'exécute au début de chaque heure
   @Cron(CronExpression.EVERY_HOUR)
   async handleCron() {
-    this.logger.log('Démarrage de la vérification des collectes...');
+    this.logger.log('Verification des plans de collecte...');
 
     const now = new Date();
 
-    // 1. Trouver les plans actifs dont la date next_run_at est passée
     const plansToExecute = await this.prisma.collectionPlan.findMany({
       where: {
         is_active: true,
-        next_run_at: { lte: now }, // lte = Less Than or Equal (Date passée ou maintenant)
+        frequency: { not: 'ON_DEMAND' },
+        next_run_at: { lte: now },
+      },
+      include: {
+        hypothesis: {
+          include: {
+            axis: {
+              include: {
+                objective: {
+                  include: {
+                    project: true,
+                  },
+                },
+              },
+            },
+          },
+        },
       },
     });
 
     if (plansToExecute.length === 0) {
-      this.logger.debug('Aucune collecte à exécuter pour le moment.');
+      this.logger.debug('Aucun plan a executer.');
       return;
     }
 
+    this.logger.log(`${plansToExecute.length} plan(s) a executer`);
+
     for (const plan of plansToExecute) {
       try {
-        this.logger.log(`Exécution de la collecte pour le plan: ${plan.id}`);
+        const project = plan.hypothesis.axis.objective.project;
+        const ownerId = project.owner_user_id;
 
-        // --- ICI : Tu appelleras ton futur service de scraping/RSS ---
-        // await this.scraperService.run(plan.id);
+        if (!ownerId) {
+          this.logger.warn(`Plan ${plan.id} ignore : pas de owner_user_id`);
+          continue;
+        }
 
-        // 2. Calculer la prochaine date d'exécution
-        const nextDate = this.calculateNextRun(plan.frequency);
+        this.logger.log(`Lancement collecte plan: ${plan.id}`);
 
-        // 3. Mettre à jour le plan dans la DB
-        await this.prisma.collectionPlan.update({
-          where: { id: plan.id },
-          data: {
-            last_run_at: now,
-            next_run_at: nextDate,
-          },
-        });
+        // ✅ CORRECTION 4 : passer SCHEDULED comme trigger_type
+        await this.collectionManager.runCollectionPlan(
+          plan.id,
+          ownerId,
+          'SCHEDULED', // trigger_type correct
+        );
 
       } catch (error) {
-        this.logger.error(`Erreur lors du plan ${plan.id}:`, error);
+        this.logger.error(`Erreur plan ${plan.id}: ${error.message}`);
       }
     }
-  }
-
-  private calculateNextRun(frequency: string): Date {
-    const next = new Date();
-    switch (frequency.toUpperCase()) {
-      case 'DAILY':
-        next.setDate(next.getDate() + 1);
-        break;
-      case 'WEEKLY':
-        next.setDate(next.getDate() + 7);
-        break;
-      case 'MONTHLY':
-        next.setMonth(next.getMonth() + 1);
-        break;
-      default:
-        next.setDate(next.getDate() + 1); // Par défaut 24h
-    }
-    return next;
   }
 }

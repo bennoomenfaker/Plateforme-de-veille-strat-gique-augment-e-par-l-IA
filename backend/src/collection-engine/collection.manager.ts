@@ -1,7 +1,15 @@
-import { Injectable, Logger, NotFoundException, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RssService } from './connectors/rss.service';
+import { WebService } from './connectors/web.service';
+import { PdfScraperService } from './connectors/pdf-scraper.service';
 import { KeywordFilter } from './filters/keyword.filter';
+import * as crypto from 'crypto';
 
 @Injectable()
 export class CollectionManager {
@@ -10,10 +18,12 @@ export class CollectionManager {
   constructor(
     private prisma: PrismaService,
     private rssService: RssService,
+    private webService: WebService,
+    private pdfScraperService: PdfScraperService,
     private keywordFilter: KeywordFilter,
   ) {}
 
-  // ─── Collecte via project (ancien ETL - legacy) ───────────────────────────
+  // Legacy ETL
   async startCollection(projectId: string) {
     const project = await this.prisma.project.findUnique({
       where: { id: projectId },
@@ -31,11 +41,7 @@ export class CollectionManager {
           await this.prisma.rawData.upsert({
             where: { contentHash: item.contentHash },
             update: {},
-            create: {
-              ...item,
-              projectId: project.id,
-              sourceId: source.id,
-            },
+            create: { ...item, projectId: project.id, sourceId: source.id },
           });
           totalCollected++;
         } catch {}
@@ -44,8 +50,12 @@ export class CollectionManager {
     return { collected: totalCollected };
   }
 
-  // ─── Collecte via CollectionPlan (Sprint 3) ───────────────────────────────
-  async runCollectionPlan(planId: string, userId: string) {
+  //  Collecte via CollectionPlan 
+  async runCollectionPlan(
+    planId: string,
+    userId: string,
+    triggerType: 'MANUAL' | 'SCHEDULED' = 'MANUAL',
+  ) {
     const plan = await this.prisma.collectionPlan.findUnique({
       where: { id: planId },
       include: {
@@ -75,36 +85,44 @@ export class CollectionManager {
 
     const project = plan.hypothesis.axis.objective.project;
 
-    // Vérification accès
+    // Vérification accès multi-tenant
     const hasAccess =
       project.owner_user_id === userId ||
       project.organisation?.members.some(
-        m => m.user_id === userId && m.statut === 'ACTIF',
+        (m) => m.user_id === userId && m.statut === 'ACTIF',
       );
     if (!hasAccess) throw new ForbiddenException('Accès refusé');
 
-    // Créer le job
+    //  Créer le job en PENDING d'abord
     const job = await this.prisma.collectionJob.create({
       data: {
         collection_plan_id: planId,
+        status: 'PENDING',
+        trigger_type: triggerType, //  trigger_type dynamique
+      },
+    });
+
+   
+    await this.prisma.collectionJob.update({
+      where: { id: job.id },
+      data: {
         status: 'RUNNING',
-        trigger_type: 'MANUAL',
         started_at: new Date(),
       },
     });
 
-    // Mots-clés INCLUDE seulement pour le filtre
+    // Préparer keywords
     const includeKeywords = plan.keywords
-      .filter(k => k.keyword_type === 'INCLUDE' || k.keyword_type === 'PRINCIPAL')
-      .map(k => k.keyword);
+      .filter(
+        (k) => k.keyword_type === 'INCLUDE' || k.keyword_type === 'PRINCIPAL',
+      )
+      .map((k) => k.keyword);
 
-    // Mots-clés EXCLUDE
     const excludeKeywords = plan.keywords
-      .filter(k => k.keyword_type === 'EXCLUDE')
-      .map(k => k.keyword.toLowerCase());
+      .filter((k) => k.keyword_type === 'EXCLUDE')
+      .map((k) => k.keyword.toLowerCase());
 
     let collected = 0;
-    let skipped = 0;
     let duplicates = 0;
     const logs: any[] = [];
 
@@ -119,41 +137,101 @@ export class CollectionManager {
         };
 
         let rawItems: any[] = [];
+        const sourceType = source.source_type?.toUpperCase();
 
-        if (source.source_type === 'RSS') {
-          rawItems = await this.rssService.fetch(source.source_url);
-        } else {
-          this.logger.log(`Source type ${source.source_type} — RSS uniquement en Sprint 3`);
+        // ── Connecteurs selon source_type ──
+        try {
+          if (sourceType === 'RSS') {
+            rawItems = await this.rssService.fetch(source.source_url);
+
+          } else if (sourceType === 'WEB') {
+            rawItems = await this.webService.fetch(source.source_url);
+
+          } else if (sourceType === 'PDF') {
+            rawItems = await this.pdfScraperService.fetchPdfLinks(
+              source.source_url,
+            );
+
+          } else if (sourceType === 'UPLOAD') {
+            
+            this.logger.log(
+              `Source UPLOAD ignorée dans le run automatique (déjà traitée via /uploads/pdf)`,
+            );
+            logs.push(sourceLog);
+            continue;
+
+          } else {
+            this.logger.warn(
+              `Type source inconnu: ${source.source_type} — ignoré`,
+            );
+            logs.push(sourceLog);
+            continue;
+          }
+        } catch (connectorErr) {
+          
+          this.logger.warn(
+            `Erreur connecteur ${sourceType}, retry dans 3s... : ${connectorErr.message}`,
+          );
+          await this.sleep(3000);
+          try {
+            if (sourceType === 'RSS') {
+              rawItems = await this.rssService.fetch(source.source_url);
+            } else if (sourceType === 'WEB') {
+              rawItems = await this.webService.fetch(source.source_url);
+            } else if (sourceType === 'PDF') {
+              rawItems = await this.pdfScraperService.fetchPdfLinks(source.source_url);
+            }
+          } catch (retryErr) {
+            this.logger.error(
+              `Echec retry source ${source.source_label}: ${retryErr.message}`,
+            );
+            sourceLog.errors++;
+            logs.push(sourceLog);
+            continue;
+          }
         }
 
-        // Filtrage keywords INCLUDE
-        let filtered = includeKeywords.length > 0
-          ? this.keywordFilter.filter(rawItems, includeKeywords)
-          : rawItems;
+       
+        let filtered =
+          includeKeywords.length > 0
+            ? this.keywordFilter.filterInclude(rawItems, includeKeywords)
+            : rawItems;
 
-        // Filtrage keywords EXCLUDE
+        
         if (excludeKeywords.length > 0) {
-          filtered = filtered.filter(item => {
-            const text = `${item.title} ${item.content}`.toLowerCase();
-            return !excludeKeywords.some(kw => text.includes(kw));
-          });
+          filtered = this.keywordFilter.filterExclude(filtered, excludeKeywords);
         }
 
+        // Stocker les items
         for (const item of filtered) {
           try {
+            let filePath: string | null = null;
+
+            if (sourceType === 'PDF' && item.isPdf && item.url) {
+              const filename = `${crypto.randomUUID()}.pdf`;
+              filePath = await this.pdfScraperService.downloadPdf(
+                item.url,
+                filename,
+              );
+            }
+
             await this.prisma.rawItem.create({
               data: {
                 project_id: project.id,
                 collection_plan_id: planId,
-                source_type: source.source_type,
+                source_type: sourceType,
                 source_name: source.source_label,
                 source_url: source.source_url,
                 article_url: item.url || null,
-                title: item.title,
+                file_path: filePath,
+                title: item.title || null,
                 content_raw: item.content || null,
                 published_at: item.publishedAt || new Date(),
                 hash: item.contentHash,
-                metadata: { feedTitle: item.feedTitle || null },
+                metadata: {
+                  feedTitle: item.feedTitle || null,
+                  isPdf: item.isPdf || false,
+                },
               },
             });
             collected++;
@@ -164,20 +242,22 @@ export class CollectionManager {
         }
 
         logs.push(sourceLog);
-        this.logger.log(`Source ${source.source_label}: ${sourceLog.items} items collectés`);
+        this.logger.log(
+          `Source ${source.source_label}: ${sourceLog.items} items collectes`,
+        );
       }
 
-      // Mise à jour du job
+      // Mettre à jour le job DONE
       await this.prisma.collectionJob.update({
         where: { id: job.id },
         data: {
           status: 'DONE',
           finished_at: new Date(),
-          logs: { collected, skipped, duplicates, sources: logs },
+          logs: { collected, duplicates, sources: logs },
         },
       });
 
-      // Mise à jour next_run_at du plan
+      // Calculer next_run_at
       const nextRun = this.calculateNextRun(plan.frequency);
       await this.prisma.collectionPlan.update({
         where: { id: planId },
@@ -187,8 +267,16 @@ export class CollectionManager {
         },
       });
 
-      this.logger.log(`Plan ${planId} terminé: ${collected} collectés, ${duplicates} doublons`);
-      return { message: 'Collecte terminée', job_id: job.id, collected, skipped, duplicates };
+      this.logger.log(
+        `Plan ${planId} termine: ${collected} collectes, ${duplicates} doublons`,
+      );
+
+      return {
+        message: 'Collecte terminee',
+        job_id: job.id,
+        collected,
+        duplicates,
+      };
     } catch (err) {
       await this.prisma.collectionJob.update({
         where: { id: job.id },
@@ -202,7 +290,6 @@ export class CollectionManager {
     }
   }
 
-  // ─── Récupérer les jobs d'un plan ─────────────────────────────────────────
   async getJobsByPlan(planId: string) {
     return this.prisma.collectionJob.findMany({
       where: { collection_plan_id: planId },
@@ -210,7 +297,6 @@ export class CollectionManager {
     });
   }
 
-  // ─── Récupérer les raw items d'un plan ────────────────────────────────────
   async getRawItemsByPlan(planId: string, page = 1, limit = 20) {
     const skip = (page - 1) * limit;
     const [data, total] = await Promise.all([
@@ -225,7 +311,6 @@ export class CollectionManager {
     return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
-  // ─── Récupérer les raw items d'un projet ──────────────────────────────────
   async getRawItemsByProject(projectId: string, page = 1, limit = 20) {
     const skip = (page - 1) * limit;
     const [data, total] = await Promise.all([
@@ -243,11 +328,16 @@ export class CollectionManager {
   private calculateNextRun(frequency: string): Date {
     const next = new Date();
     switch (frequency?.toUpperCase()) {
-      case 'DAILY': next.setDate(next.getDate() + 1); break;
-      case 'WEEKLY': next.setDate(next.getDate() + 7); break;
-      case 'MONTHLY': next.setMonth(next.getMonth() + 1); break;
-      default: next.setDate(next.getDate() + 1);
+      case 'DAILY':   next.setDate(next.getDate() + 1);    break;
+      case 'WEEKLY':  next.setDate(next.getDate() + 7);    break;
+      case 'MONTHLY': next.setMonth(next.getMonth() + 1);  break;
+      default:        next.setDate(next.getDate() + 1);
     }
     return next;
+  }
+
+  
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }

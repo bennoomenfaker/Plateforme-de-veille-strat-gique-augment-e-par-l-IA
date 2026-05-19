@@ -24,9 +24,9 @@ export default function OrganisationPage() {
   });
 
   const revokeMutation = useMutation({
-    mutationFn: (memberId: string) => api.delete(`/organisations/${org?.id}/members/${memberId}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['organisation'] }),
-  });
+  mutationFn: (memberId: string) => api.delete(`/organisations/${org?.id}/membres/${memberId}`),
+  onSuccess: () => queryClient.invalidateQueries({ queryKey: ['organisation'] }),
+});
 
   const { data: invitations } = useQuery({
     queryKey: ['invitations', org?.id],

@@ -87,35 +87,86 @@ export class ProjectsService {
 
 
   async getMyProjects(userId: string) {
-    const commonFilter = { is_deleted: false, isActive: true };
+  const commonFilter = { is_deleted: false, isActive: true };
 
-    const individualProjects = await this.prisma.project.findMany({
-      where: { ...commonFilter, owner_user_id: userId },
-      include: { 
-        folder: true, 
-        objectives: { include: { axes: { include: { hypotheses: true } } } } 
-      },
-    });
+  const individualProjects = await this.prisma.project.findMany({
+    where: { ...commonFilter, owner_user_id: userId },
+    include: {
+      folder: true,
+      sources: true, // legacy sources
+      objectives: {
+        include: {
+          axes: {
+            include: {
+              hypotheses: {
+                include: {
+                  collection_plans: {
+                    include: { sources: true, keywords: true }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+  });
 
-    const memberships = await this.prisma.membreOrganisation.findMany({
-      where: { user_id: userId, statut: 'ACTIF' },
-      select: { organisation_id: true },
-    });
-    const orgIds = memberships.map(m => m.organisation_id);
+  const memberships = await this.prisma.membreOrganisation.findMany({
+    where: { user_id: userId, statut: 'ACTIF' },
+    select: { organisation_id: true },
+  });
+  const orgIds = memberships.map(m => m.organisation_id);
 
-    const orgProjects = orgIds.length > 0
-      ? await this.prisma.project.findMany({
-          where: { ...commonFilter, organisation_id: { in: orgIds } },
-          include: { 
-            folder: true, 
-            organisation: { select: { nom: true } }, 
-            objectives: { include: { axes: { include: { hypotheses: true } } } } 
-          },
-        })
-      : [];
+  const orgProjects = orgIds.length > 0
+    ? await this.prisma.project.findMany({
+        where: { ...commonFilter, organisation_id: { in: orgIds } },
+        include: {
+          folder: true,
+          sources: true,
+          organisation: { select: { nom: true } },
+          objectives: {
+            include: {
+              axes: {
+                include: {
+                  hypotheses: {
+                    include: {
+                      collection_plans: {
+                        include: { sources: true, keywords: true }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+      })
+    : [];
 
-    return { individual: individualProjects, organisation: orgProjects };
-  }
+  // Enrichir chaque projet avec le total des sources des plans de collecte
+  const enrichProject = (project: any) => {
+    const planSources = project.objectives?.flatMap((obj: any) =>
+      obj.axes?.flatMap((axe: any) =>
+        axe.hypotheses?.flatMap((hyp: any) =>
+          hyp.collection_plans?.flatMap((plan: any) => plan.sources || []) || []
+        ) || []
+      ) || []
+    ) || [];
+
+    return {
+      ...project,
+      // On retourne le total combiné (legacy + plan sources)
+      _totalSources: (project.sources?.length || 0) + planSources.length,
+      _planSources: planSources,
+    };
+  };
+
+  return {
+    individual: individualProjects.map(enrichProject),
+    organisation: orgProjects.map(enrichProject),
+  };
+}
 
 /**
    * Détail complet d'un projet

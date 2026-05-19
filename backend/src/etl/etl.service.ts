@@ -14,7 +14,7 @@ export class EtlService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  @Cron(CronExpression.EVERY_HOUR)
+ // @Cron(CronExpression.EVERY_HOUR)
   async handleScheduledCollection() {
     this.logger.log('Declenchement automatique de la collecte RSS...');
     await this.collectAllSources();

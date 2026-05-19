@@ -1,0 +1,540 @@
+import { useState } from 'react';
+import { useParams, Link } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
+  LineChart, Line, PieChart, Pie, Cell, Legend,
+} from 'recharts';
+import Layout from '../../components/layout/Layout';
+import api, { aiEnrichmentService, processingService } from '../../services/api';
+import type { HypothesisImpact, AiEnrichmentStats } from '../../types';
+
+const IMPACT_CFG: Record<HypothesisImpact, { label: string; color: string }> = {
+  OPEN:                { label: 'Ouverte',        color: '#9ca3af' },
+  PARTIALLY_SUPPORTED: { label: 'Part. supportée', color: '#fbbf24' },
+  SUPPORTED:           { label: 'Supportée',       color: '#34d399' },
+  CONTRADICTED:        { label: 'Contredite',      color: '#f87171' },
+  NEEDS_MORE_RESEARCH: { label: 'À approfondir',   color: '#a78bfa' },
+};
+
+const CHART_COLORS = ['#3b82f6','#34d399','#f87171','#fbbf24','#a78bfa','#60a5fa','#fb923c'];
+const TOOLTIP_STYLE = {
+  background: '#1e2535', border: '1px solid #374151',
+  borderRadius: '0.5rem', color: '#e5e7eb', fontSize: '0.75rem',
+};
+
+export default function ProjectInsightDashboardPage() {
+  const { id: projectId } = useParams<{ id: string }>();
+  const [activeTab, setActiveTab] = useState<'overview' | 'hypotheses' | 'feed'>('overview');
+
+  // ── Queries ────────────────────────────────────────────────────────────────
+
+  const { data: project } = useQuery({
+    queryKey: ['project', projectId],
+    queryFn:  () => api.get(`/projects/${projectId}`).then(r => r.data),
+    enabled:  !!projectId,
+  });
+
+  const { data: procStats } = useQuery({
+    queryKey: ['processing-stats', projectId],
+    queryFn:  () => processingService.getStats(projectId!).then(r => r.data),
+    enabled:  !!projectId,
+  });
+
+  const { data: aiStats } = useQuery<AiEnrichmentStats>({
+    queryKey: ['ai-stats', projectId],
+    queryFn:  () => aiEnrichmentService.getStats(projectId!).then(r => r.data),
+    enabled:  !!projectId,
+  });
+
+  const { data: feedData } = useQuery({
+    queryKey: ['enriched-feed', projectId],
+    queryFn:  () => aiEnrichmentService.getByProject(projectId!, 1, 50).then(r => r.data),
+    enabled:  !!projectId,
+  });
+
+  const { data: hypothesisEvals } = useQuery({
+    queryKey: ['hypothesis-evals', projectId],
+    queryFn:  () => aiEnrichmentService.getHypothesisEvaluations(projectId!).then(r => r.data),
+    enabled:  !!projectId,
+  });
+
+  // ── Calculs ────────────────────────────────────────────────────────────────
+
+  const objectives = project?.objectives ?? [];
+  const feedItems  = feedData?.data ?? [];
+  const evals      = Array.isArray(hypothesisEvals) ? hypothesisEvals : [];
+
+  const impactPie = (Object.entries(IMPACT_CFG) as [HypothesisImpact, { label: string; color: string }][])
+    .map(([key, cfg]) => ({
+      name:  cfg.label,
+      value: feedItems.filter((i: any) => i.hypothesis_impact === key).length,
+      color: cfg.color,
+    }))
+    .filter(d => d.value > 0);
+
+  const itemsByDay = (() => {
+    const counts: Record<string, number> = {};
+    feedItems.forEach((item: any) => {
+      const d = item.enriched_at?.slice(0, 10);
+      if (d) counts[d] = (counts[d] ?? 0) + 1;
+    });
+    return Object.entries(counts)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .slice(-14)
+      .map(([date, count]) => ({
+        date: new Date(date).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }),
+        count,
+      }));
+  })();
+
+  const topSources = (() => {
+    const counts: Record<string, number> = {};
+    feedItems.forEach((item: any) => {
+      const s = item.source_name ?? item.source_type ?? 'Inconnu';
+      counts[s] = (counts[s] ?? 0) + 1;
+    });
+    return Object.entries(counts)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 8)
+      .map(([name, count]) => ({ name: name.slice(0, 22), count }));
+  })();
+
+  const topItems = [...feedItems]
+    .sort((a: any, b: any) => (b.relevance_score ?? 0) - (a.relevance_score ?? 0))
+    .slice(0, 5);
+
+  const cardStyle: React.CSSProperties = {
+    background: '#161b27', border: '1px solid #1e2535', borderRadius: '1rem',
+  };
+
+  // ── Render ────────────────────────────────────────────────────────────────
+
+  return (
+    <Layout>
+      <div className="p-8 max-w-6xl mx-auto">
+
+        {/* Breadcrumb */}
+        <div className="mb-1">
+          <Link to={`/projects/${projectId}`} className="text-xs font-medium"
+            style={{ color: '#6b7280' }}>
+            ← Retour au projet
+          </Link>
+        </div>
+
+        {/* Header */}
+        <div className="flex items-start justify-between mb-8">
+          <div>
+            <div className="flex items-center gap-3 mb-1">
+              <h1 className="text-2xl font-bold text-white">Dashboard Stratégique</h1>
+              <span className="text-xs px-2.5 py-1 rounded-full font-semibold"
+                style={{ background: 'rgba(59,130,246,0.1)', color: '#60a5fa',
+                         border: '1px solid rgba(59,130,246,0.2)' }}>
+                Sprint 6
+              </span>
+            </div>
+            <p className="text-sm" style={{ color: '#6b7280' }}>
+              {project?.nom} · Vue décisionnelle consolidée
+            </p>
+          </div>
+          <div className="flex gap-3">
+            <Link to={`/projects/${projectId}/enriched`}
+              className="text-sm font-semibold px-4 py-2 rounded-xl transition"
+              style={{ background: 'rgba(139,92,246,0.15)', color: '#a78bfa',
+                       border: '1px solid rgba(139,92,246,0.3)' }}>
+              🧠 Enrichissement IA
+            </Link>
+            <Link to={`/projects/${projectId}/processed`}
+              className="text-sm font-semibold px-4 py-2 rounded-xl transition"
+              style={{ background: 'rgba(16,185,129,0.15)', color: '#34d399',
+                       border: '1px solid rgba(16,185,129,0.3)' }}>
+              🧹 Données nettoyées
+            </Link>
+          </div>
+        </div>
+
+        {/* KPIs */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+          {[
+            { label: 'Items collectés', count: procStats?.total_raw ?? 0,
+              color: '#60a5fa', bg: 'rgba(59,130,246,0.1)' },
+            { label: 'Items nettoyés', count: procStats?.total_processed ?? 0,
+              color: '#34d399', bg: 'rgba(16,185,129,0.1)' },
+            { label: 'Insights IA', count: aiStats?.total_enriched ?? feedItems.length,
+              color: '#a78bfa', bg: 'rgba(139,92,246,0.1)' },
+            { label: 'Score moyen',
+              count: `${Math.round((aiStats?.avg_relevance ?? 0) * 100)}%`,
+              color: '#fbbf24', bg: 'rgba(251,191,36,0.1)' },
+          ].map((stat, i) => (
+            <div key={i} className="p-4 rounded-2xl"
+              style={{ background: '#161b27', border: '1px solid #1e2535' }}>
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-xl flex items-center justify-center text-xl font-bold"
+                  style={{ background: stat.bg, color: stat.color }}>
+                  {stat.count}
+                </div>
+                <p className="text-[10px] font-bold uppercase tracking-widest"
+                  style={{ color: '#6b7280' }}>{stat.label}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Onglets */}
+        <div className="flex gap-2 mb-6">
+          {[
+            { key: 'overview',   label: 'Vue générale'    },
+            { key: 'hypotheses', label: 'Hypothèses'       },
+            { key: 'feed',       label: "Flux d'insights"  },
+          ].map(tab => (
+            <button key={tab.key}
+              onClick={() => setActiveTab(tab.key as any)}
+              className="px-4 py-2 rounded-xl text-sm font-semibold transition"
+              style={activeTab === tab.key
+                ? { background: 'linear-gradient(135deg,#3b82f6,#6366f1)', color: 'white' }
+                : { background: '#161b27', color: '#6b7280', border: '1px solid #1e2535' }}>
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* ════ TAB: VUE GÉNÉRALE ════ */}
+        {activeTab === 'overview' && (
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+              {/* Évolution temporelle */}
+              <div style={{ ...cardStyle, padding: '1.5rem' }}>
+                <p className="text-xs font-bold uppercase tracking-widest mb-4"
+                  style={{ color: '#4b5568' }}>Insights par jour — 14 derniers jours</p>
+                {itemsByDay.length === 0 ? (
+                  <div className="h-44 flex items-center justify-center text-sm"
+                    style={{ color: '#4b5568' }}>Aucune donnée</div>
+                ) : (
+                  <ResponsiveContainer width="100%" height={176}>
+                    <LineChart data={itemsByDay}>
+                      <XAxis dataKey="date" tick={{ fill: '#6b7280', fontSize: 10 }}
+                        axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fill: '#6b7280', fontSize: 10 }}
+                        axisLine={false} tickLine={false} />
+                      <Tooltip contentStyle={TOOLTIP_STYLE} />
+                      <Line type="monotone" dataKey="count" stroke="#6366f1"
+                        strokeWidth={2} dot={{ fill: '#6366f1', r: 3 }} name="Insights" />
+                    </LineChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+
+              {/* Distribution impact */}
+              <div style={{ ...cardStyle, padding: '1.5rem' }}>
+                <p className="text-xs font-bold uppercase tracking-widest mb-4"
+                  style={{ color: '#4b5568' }}>Distribution de l'impact IA</p>
+                {impactPie.length === 0 ? (
+                  <div className="h-44 flex items-center justify-center text-sm"
+                    style={{ color: '#4b5568' }}>Lancez l'enrichissement IA</div>
+                ) : (
+                  <ResponsiveContainer width="100%" height={176}>
+                    <PieChart>
+                      <Pie data={impactPie} cx="50%" cy="50%"
+                        innerRadius={44} outerRadius={72} paddingAngle={3} dataKey="value">
+                        {impactPie.map((entry, i) => (
+                          <Cell key={i} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip contentStyle={TOOLTIP_STYLE} />
+                      <Legend wrapperStyle={{ fontSize: '10px', color: '#9ca3af' }}
+                        iconType="circle" iconSize={8} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+              {/* Top sources */}
+              <div style={{ ...cardStyle, padding: '1.5rem' }}>
+                <p className="text-xs font-bold uppercase tracking-widest mb-4"
+                  style={{ color: '#4b5568' }}>Top sources</p>
+                {topSources.length === 0 ? (
+                  <div className="h-44 flex items-center justify-center text-sm"
+                    style={{ color: '#4b5568' }}>Aucune source</div>
+                ) : (
+                  <ResponsiveContainer width="100%" height={176}>
+                    <BarChart data={topSources} layout="vertical">
+                      <XAxis type="number" tick={{ fill: '#6b7280', fontSize: 10 }}
+                        axisLine={false} tickLine={false} />
+                      <YAxis dataKey="name" type="category" width={90}
+                        tick={{ fill: '#9ca3af', fontSize: 10 }}
+                        axisLine={false} tickLine={false} />
+                      <Tooltip contentStyle={TOOLTIP_STYLE} />
+                      <Bar dataKey="count" radius={[0, 4, 4, 0]} name="Articles">
+                        {topSources.map((_, i) => (
+                          <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+
+              {/* Pipeline */}
+              <div style={{ ...cardStyle, padding: '1.5rem' }}>
+                <p className="text-xs font-bold uppercase tracking-widest mb-4"
+                  style={{ color: '#4b5568' }}>État du pipeline</p>
+                <div className="space-y-4">
+                  {[
+                    { icon: '📦', label: 'Collecte',          value: procStats?.total_raw ?? 0,       color: '#60a5fa' },
+                    { icon: '🧹', label: 'Processing',        value: procStats?.total_processed ?? 0, color: '#34d399' },
+                    { icon: '🧠', label: 'Enrichissement IA', value: aiStats?.total_enriched ?? 0,    color: '#a78bfa' },
+                  ].map((bar, i) => {
+                    const max = procStats?.total_raw ?? 1;
+                    const pct = max > 0 ? Math.min(100, Math.round((bar.value / max) * 100)) : 0;
+                    return (
+                      <div key={i}>
+                        <div className="flex justify-between items-center mb-1 text-xs">
+                          <span style={{ color: '#9ca3af' }}>{bar.icon} {bar.label}</span>
+                          <span style={{ color: bar.color }}>{bar.value.toLocaleString()} ({pct}%)</span>
+                        </div>
+                        <div className="h-2 rounded-full" style={{ background: '#1e2535' }}>
+                          <div className="h-2 rounded-full transition-all duration-700"
+                            style={{ width: `${pct}%`, background: bar.color }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="mt-5 pt-4 grid grid-cols-3 gap-3 text-center"
+                  style={{ borderTop: '1px solid #1e2535' }}>
+                  {[
+                    { label: 'En attente',  value: procStats?.pending ?? 0,
+                      color: '#fbbf24' },
+                    { label: 'Supportées',
+                      value: (aiStats?.by_impact as any)?.SUPPORTED ?? 0, color: '#34d399' },
+                    { label: 'Contredites',
+                      value: (aiStats?.by_impact as any)?.CONTRADICTED ?? 0, color: '#f87171' },
+                  ].map((s, i) => (
+                    <div key={i}>
+                      <p className="text-xl font-bold" style={{ color: s.color }}>{s.value}</p>
+                      <p className="text-[10px]" style={{ color: '#6b7280' }}>{s.label}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Top insights */}
+            {topItems.length > 0 && (
+              <div style={{ ...cardStyle, overflow: 'hidden' }}>
+                <div className="px-5 py-4" style={{ borderBottom: '1px solid #1e2535' }}>
+                  <h2 className="text-sm font-bold text-white">🏆 Insights haute pertinence</h2>
+                </div>
+                {topItems.map((item: any, i: number) => {
+                  const cfg = IMPACT_CFG[item.hypothesis_impact as HypothesisImpact] ?? IMPACT_CFG.OPEN;
+                  const pct = Math.round((item.relevance_score ?? 0) * 100);
+                  return (
+                    <div key={item.id}
+                      className="px-5 py-4 flex items-center gap-4"
+                      style={{ borderBottom: i < topItems.length - 1 ? '1px solid #1e2535' : 'none' }}>
+                      <span className="text-lg font-bold w-5 shrink-0"
+                        style={{ color: '#4b5568' }}>{i + 1}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-white line-clamp-1">
+                          {item.title ?? item.processed_item?.title ?? 'Sans titre'}
+                        </p>
+                        <p className="text-xs line-clamp-1 mt-0.5" style={{ color: '#6b7280' }}>
+                          {item.summary ?? 'Aucun résumé'}
+                        </p>
+                      </div>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0"
+                        style={{ background: `${cfg.color}20`, color: cfg.color,
+                                 border: `1px solid ${cfg.color}40` }}>
+                        {cfg.label}
+                      </span>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <div className="w-14 h-1.5 rounded-full" style={{ background: '#1e2535' }}>
+                          <div className="h-1.5 rounded-full"
+                            style={{ width: `${pct}%`, background: '#34d399' }} />
+                        </div>
+                        <span className="text-xs font-bold" style={{ color: '#34d399' }}>{pct}%</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ════ TAB: HYPOTHÈSES ════ */}
+        {activeTab === 'hypotheses' && (
+          <div className="space-y-4">
+
+            {/* Compteurs */}
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+              {(Object.entries(IMPACT_CFG) as [HypothesisImpact, { label: string; color: string }][])
+                .map(([key, cfg]) => {
+                  const count = (aiStats?.by_impact as any)?.[key] ?? 0;
+                  return (
+                    <div key={key} className="p-4 rounded-2xl text-center"
+                      style={{ background: `${cfg.color}10`, border: `1px solid ${cfg.color}30` }}>
+                      <p className="text-2xl font-bold" style={{ color: cfg.color }}>{count}</p>
+                      <p className="text-[10px] font-bold uppercase tracking-wider mt-1"
+                        style={{ color: '#6b7280' }}>{cfg.label}</p>
+                    </div>
+                  );
+                })}
+            </div>
+
+            {/* Arborescence objectifs > axes > hypothèses */}
+            {objectives.length === 0 ? (
+              <div className="rounded-2xl py-12 text-center" style={cardStyle}>
+                <p className="text-sm" style={{ color: '#6b7280' }}>Aucun objectif défini</p>
+              </div>
+            ) : (
+              objectives.map((obj: any) => (
+                <div key={obj.id} style={cardStyle} className="overflow-hidden">
+                  <div className="px-5 py-4 flex items-center gap-3"
+                    style={{ borderBottom: '1px solid #1e2535' }}>
+                    <span className="text-xs font-bold px-2 py-0.5 rounded-full shrink-0"
+                      style={{ background: 'rgba(59,130,246,0.15)', color: '#60a5fa',
+                               border: '1px solid rgba(59,130,246,0.2)' }}>
+                      Objectif {obj.priority}
+                    </span>
+                    <p className="text-sm font-semibold text-white">{obj.content}</p>
+                  </div>
+
+                  {(obj.axes ?? []).map((axe: any) => (
+                    <div key={axe.id}>
+                      <div className="px-8 py-3 flex items-center gap-3"
+                        style={{ borderBottom: '1px solid #1e2535',
+                                 background: 'rgba(99,102,241,0.03)' }}>
+                        <span className="text-xs font-bold px-2 py-0.5 rounded-full"
+                          style={{ background: 'rgba(99,102,241,0.15)', color: '#a5b4fc' }}>Axe</span>
+                        <p className="text-sm font-medium text-white">{axe.name}</p>
+                      </div>
+
+                      {(axe.hypotheses ?? []).map((hyp: any) => {
+                        const eva = evals.find((e: any) => e.hypothesis_id === hyp.id);
+                        const impact: HypothesisImpact = (eva?.status as HypothesisImpact) ?? 'OPEN';
+                        const cfg  = IMPACT_CFG[impact];
+                        const conf = eva?.confidence ?? 0;
+                        const evCnt = eva?.evidence_count ?? 0;
+                        return (
+                          <div key={hyp.id}
+                            className="flex items-center gap-4 px-12 py-4 hover:bg-white/5 transition"
+                            style={{ borderBottom: '1px solid #1e2535',
+                                     background: 'rgba(16,185,129,0.02)' }}>
+                            <div className="w-2.5 h-2.5 rounded-full shrink-0"
+                              style={{ background: cfg.color, boxShadow: `0 0 6px ${cfg.color}` }} />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm text-white line-clamp-2">{hyp.content}</p>
+                              <p className="text-xs mt-0.5" style={{ color: '#6b7280' }}>
+                                {evCnt} preuve{evCnt > 1 ? 's' : ''} ·{' '}
+                                {hyp.collection_plans?.length ?? 0} plan{(hyp.collection_plans?.length ?? 0) > 1 ? 's' : ''}
+                              </p>
+                            </div>
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0"
+                              style={{ background: `${cfg.color}20`, color: cfg.color,
+                                       border: `1px solid ${cfg.color}40` }}>
+                              {cfg.label}
+                            </span>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <div className="w-16 h-1.5 rounded-full" style={{ background: '#1e2535' }}>
+                                <div className="h-1.5 rounded-full transition-all"
+                                  style={{ width: `${Math.round(conf * 100)}%`, background: cfg.color }} />
+                              </div>
+                              <span className="text-xs font-bold w-8 text-right"
+                                style={{ color: cfg.color }}>
+                                {Math.round(conf * 100)}%
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+              ))
+            )}
+          </div>
+        )}
+
+        {/* ════ TAB: FEED ════ */}
+        {activeTab === 'feed' && (
+          <div>
+            {feedItems.length === 0 ? (
+              <div className="rounded-2xl py-16 text-center" style={cardStyle}>
+                <p className="text-4xl mb-3">📰</p>
+                <p className="text-sm font-medium text-white mb-1">Aucun insight disponible</p>
+                <p className="text-xs mb-5" style={{ color: '#6b7280' }}>
+                  Lancez l'enrichissement IA pour générer des insights
+                </p>
+                <Link to={`/projects/${projectId}/enriched`}
+                  className="inline-block text-sm font-semibold px-5 py-2 rounded-xl text-white"
+                  style={{ background: 'linear-gradient(135deg,#7c3aed,#a78bfa)' }}>
+                  🧠 Enrichissement IA →
+                </Link>
+              </div>
+            ) : (
+              <div style={{ ...cardStyle, overflow: 'hidden' }}>
+                <div className="px-5 py-4 flex items-center justify-between"
+                  style={{ borderBottom: '1px solid #1e2535' }}>
+                  <div>
+                    <h2 className="text-sm font-bold text-white">Flux d'insights</h2>
+                    <p className="text-xs mt-0.5" style={{ color: '#6b7280' }}>
+                      {feedItems.length} résultats
+                    </p>
+                  </div>
+                  <Link to={`/projects/${projectId}/enriched`}
+                    className="text-xs font-semibold px-2.5 py-1 rounded-lg"
+                    style={{ background: 'rgba(139,92,246,0.1)', color: '#a78bfa',
+                             border: '1px solid rgba(139,92,246,0.2)' }}>
+                    Voir tout →
+                  </Link>
+                </div>
+
+                {feedItems.map((item: any, i: number) => {
+                  const cfg = IMPACT_CFG[item.hypothesis_impact as HypothesisImpact] ?? IMPACT_CFG.OPEN;
+                  const pct = Math.round((item.relevance_score ?? 0) * 100);
+                  return (
+                    <div key={item.id}
+                      className="px-5 py-4 flex items-start gap-3 hover:bg-white/5 transition"
+                      style={{ borderBottom: i < feedItems.length - 1 ? '1px solid #1e2535' : 'none' }}>
+                      <div className="w-2 h-2 rounded-full mt-2 shrink-0"
+                        style={{ background: cfg.color, boxShadow: `0 0 4px ${cfg.color}` }} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-white line-clamp-1 mb-1">
+                          {item.title ?? item.processed_item?.title ?? 'Sans titre'}
+                        </p>
+                        <p className="text-xs line-clamp-2" style={{ color: '#6b7280' }}>
+                          {item.summary ?? item.answer ?? 'Aucun résumé'}
+                        </p>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <p className="text-sm font-bold mb-1" style={{ color: '#34d399' }}>{pct}%</p>
+                        <p className="text-[10px] mb-1" style={{ color: '#4b5568' }}>
+                          {item.enriched_at
+                            ? new Date(item.enriched_at).toLocaleDateString('fr-FR',
+                                { day: '2-digit', month: '2-digit', year: 'numeric' })
+                            : '—'}
+                        </p>
+                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+                          style={{ background: `${cfg.color}20`, color: cfg.color,
+                                   border: `1px solid ${cfg.color}30` }}>
+                          {cfg.label}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+      </div>
+    </Layout>
+  );
+}

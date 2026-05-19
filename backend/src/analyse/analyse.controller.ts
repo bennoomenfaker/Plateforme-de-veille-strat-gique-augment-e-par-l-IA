@@ -7,31 +7,30 @@ import { JwtAuthGuard } from '../auth/jwt.guard';
 export class AnalyseController {
   constructor(private readonly analyseService: AnalyseService) {}
 
-  // POST /analyse/run → lancer analyse manuelle globale
-  @Post('run')
-  async runAll() {
-    return this.analyseService.analyseAllPending();
+  @Post('project/:id')
+  analyseProject(@Param('id') id: string) {
+    return this.analyseService.analyseProject(id);
   }
 
-  // POST /analyse/project/:projectId → analyser un projet
-  @Post('project/:projectId')
-  async analyseProject(@Param('projectId') projectId: string) {
-    return this.analyseService.analyseProject(projectId);
-  }
-
-  // GET /analyse/results/:projectId → résultats d'un projet
-  @Get('results/:projectId')
-  async getResults(
-    @Param('projectId') projectId: string,
+  @Get('results/:id')
+  getResults(
+    @Param('id') id: string,
     @Query('page') page = '1',
     @Query('limit') limit = '20',
+    @Query('sentiment') sentiment?: string,
+    @Query('minRelevance') minRelevance?: string,
+    @Query('impact') impact?: string,
   ) {
-    return this.analyseService.getResults(projectId, parseInt(page), parseInt(limit));
+    return this.analyseService.getResults(id, parseInt(page), parseInt(limit), { sentiment, minRelevance, impact });
   }
 
-  // GET /analyse/stats/:projectId → stats sentiment
-  @Get('stats/:projectId')
-  async getStats(@Param('projectId') projectId: string) {
-    return this.analyseService.getSentimentStats(projectId);
+  @Get('stats/:id')
+  getStats(@Param('id') id: string) {
+    return this.analyseService.getStats(id);
+  }
+
+  @Get('dashboard/:id')
+  getDashboard(@Param('id') id: string) {
+    return this.analyseService.getProjectDashboard(id);
   }
 }

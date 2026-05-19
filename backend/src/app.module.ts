@@ -18,7 +18,10 @@ import { PerimetersModule } from './perimeters/perimeters.module';
 import { CollectionPlansModule } from './collection-plans/collection-plans.module';
 import { StakeholdersModule } from './stakeholders/stakeholders.module';
 import { SchedulerModule } from './scheduler/scheduler.module';
+import { AiEnrichmentModule } from './ai-enrichment/ai-enrichment.module';
 import { CollectionEngineModule } from './collection-engine/collection-engine.module';
+import { UploadModule } from './upload/upload.module'; // ← AJOUTÉ
+import { ProcessingModule } from './processing/processing.module';
 
 
 @Module({
@@ -41,6 +44,10 @@ import { CollectionEngineModule } from './collection-engine/collection-engine.mo
     StakeholdersModule,
     SchedulerModule,
     CollectionEngineModule,
+    AiEnrichmentModule,
+    UploadModule,
+    ProcessingModule,
+
   ],
   controllers: [AppController],
   providers: [AppService],

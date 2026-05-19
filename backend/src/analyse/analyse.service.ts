@@ -1,200 +1,220 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class AnalyseService {
   private readonly logger = new Logger(AnalyseService.name);
-
   constructor(private prisma: PrismaService) {}
 
-  // ─── CRON : toutes les 2 heures ──────────────────────────────────────────────
-  @Cron(CronExpression.EVERY_2_HOURS)
-  async handleScheduledAnalysis() {
-    this.logger.log('Declenchement automatique de l analyse...');
-    await this.analyseAllPending();
-  }
-
-  // ─── Analyser tous les RawData non traités ────────────────────────────────────
-  async analyseAllPending(): Promise<{ analysed: number; errors: number }> {
-    // Récupérer les RawData qui n'ont pas encore de WatchResult
-    const analysedIds = await this.prisma.watchResult.findMany({
-      select: { rawDataId: true },
-      where: { rawDataId: { not: null } },
-    });
-
-    const analysedSet = new Set(analysedIds.map(r => r.rawDataId));
-
-    const rawItems = await this.prisma.rawData.findMany({
-      where: { id: { notIn: [...analysedSet] as string[] } },
-      take: 100,
-      orderBy: { createdAt: 'asc' },
-    });
-
-    let analysed = 0;
-    let errors = 0;
-
-    for (const item of rawItems) {
-      try {
-        await this.analyseRawData(item);
-        analysed++;
-      } catch (err) {
-        this.logger.error(`Erreur analyse ${item.id}: ${err.message}`);
-        errors++;
-      }
-    }
-
-    this.logger.log(`Analyse terminee: ${analysed} traites, ${errors} erreurs`);
-    return { analysed, errors };
-  }
-
-  // ─── Analyser un RawData spécifique ──────────────────────────────────────────
-  async analyseRawData(rawData: any): Promise<any> {
-    const sentiment = this.analyseSentiment(rawData.content || rawData.title);
-    const trend = this.detectTrend(rawData.content || rawData.title);
-    const summary = this.generateSummary(rawData.content || rawData.title);
-    const keywords = this.extractKeywords(rawData.content || rawData.title);
-
-    const result = await this.prisma.watchResult.create({
-      data: {
-        title: rawData.title,
-        summary,
-        sentiment,
-        trend,
-        keywords,
-        projectId: rawData.projectId,
-        rawDataId: rawData.id,
-        sourceUrl: rawData.url,
-      },
-    });
-
-    return result;
-  }
-
-  // ─── Analyser un projet entier ────────────────────────────────────────────────
-  async analyseProject(projectId: string): Promise<{ analysed: number; errors: number }> {
-    const rawItems = await this.prisma.rawData.findMany({
-      where: { projectId },
-      orderBy: { createdAt: 'desc' },
-      take: 50,
-    });
-
-    let analysed = 0;
-    let errors = 0;
-
-    for (const item of rawItems) {
-      try {
-        const existing = await this.prisma.watchResult.findFirst({
-          where: { rawDataId: item.id },
-        });
-        if (existing) continue;
-
-        await this.analyseRawData(item);
-        analysed++;
-      } catch (err) {
-        errors++;
-      }
-    }
-
-    return { analysed, errors };
-  }
-
-  // ─── Récupérer les résultats d'un projet ──────────────────────────────────────
-  async getResults(projectId: string, page = 1, limit = 20) {
-    const skip = (page - 1) * limit;
-    const [data, total] = await Promise.all([
-      this.prisma.watchResult.findMany({
-        where: { projectId },
-        orderBy: { createdAt: 'desc' },
-        skip,
-        take: limit,
+  async getProjectDashboard(projectId: string) {
+    const [
+      rawItemsCount,
+      processedItemsCount,
+      enrichedItemsCount,
+      enrichedItems,
+      hypothesisEvals,
+      project,
+    ] = await Promise.all([
+      this.prisma.rawItem.count({ where: { project_id: projectId } }),
+      this.prisma.processedItem.count({ where: { project_id: projectId } }),
+      this.prisma.enrichedItem.count({ where: { project_id: projectId } }),
+      this.prisma.enrichedItem.findMany({
+        where: { project_id: projectId },
+        orderBy: { enriched_at: 'desc' },
+        take: 100,
       }),
-      this.prisma.watchResult.count({ where: { projectId } }),
+      this.prisma.hypothesisEvaluation.findMany({ where: { project_id: projectId } }),
+      this.prisma.project.findUnique({
+        where: { id: projectId },
+        include: {
+          objectives: {
+            include: {
+              axes: {
+                include: {
+                  hypotheses: {
+                    include: { collection_plans: { include: { sources: true, keywords: true } } },
+                  },
+                },
+              },
+            },
+          },
+          perimeters: true,
+        },
+      }),
+    ]);
+
+    // Sentiments
+    const sentiments = { POSITIF: 0, NEGATIF: 0, NEUTRE: 0 };
+    const impacts: Record<string, number> = {};
+    const entityMap: Record<string, number> = {};
+    const topicMap: Record<string, number> = {};
+    const sourceMap: Record<string, number> = {};
+    let totalRelevance = 0;
+    let relevanceCount = 0;
+
+    for (const item of enrichedItems) {
+      if (item.sentiment && sentiments[item.sentiment] !== undefined) sentiments[item.sentiment]++;
+      if (item.hypothesis_impact) impacts[item.hypothesis_impact] = (impacts[item.hypothesis_impact] || 0) + 1;
+      if (item.relevance_score) { totalRelevance += item.relevance_score; relevanceCount++; }
+      if (Array.isArray(item.entities)) {
+        for (const e of item.entities as string[]) entityMap[e] = (entityMap[e] || 0) + 1;
+      }
+      if (Array.isArray(item.topics)) {
+        for (const t of item.topics as string[]) topicMap[t] = (topicMap[t] || 0) + 1;
+      }
+      
+    }
+
+    const topEntities = Object.entries(entityMap).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([name, count]) => ({ name, count }));
+    const topTopics = Object.entries(topicMap).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([name, count]) => ({ name, count }));
+    const topSources = Object.entries(sourceMap).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([name, count]) => ({ name, count }));
+
+    // Hypotheses avec évaluations
+    const hypothesesWithEval = project?.objectives?.flatMap(obj =>
+      obj.axes?.flatMap(axe =>
+        axe.hypotheses?.map(hyp => {
+          const eval_ = hypothesisEvals.find(e => e.hypothesis_id === hyp.id);
+          return {
+            id: hyp.id,
+            content: hyp.content,
+            objective: obj.content,
+            axe: axe.name,
+            status: eval_?.status || 'OPEN',
+            confidence: eval_?.confidence || 0,
+            evidence_count: eval_?.evidence_count || 0,
+            support_count: eval_?.support_count || 0,
+            against_count: eval_?.against_count || 0,
+          };
+        }) || []
+      ) || []
+    ) || [];
+
+    // Items enrichis avec answers
+    const insightsWithAnswers = enrichedItems
+      .filter(i => i.answer)
+      .slice(0, 20)
+      .map(i => ({
+        id: i.id,
+        answer: i.answer,
+        summary: i.summary,
+        sentiment: i.sentiment,
+        relevance_score: i.relevance_score,
+        hypothesis_impact: i.hypothesis_impact,
+        confidence_score: i.confidence_score,
+        enriched_at: i.enriched_at,
+        topics: i.topics,
+      }));
+
+    // Données graphiques timeline (par semaine)
+    const rawItemsByDate = await this.prisma.rawItem.groupBy({
+      by: ['fetched_at'],
+      where: { project_id: projectId },
+      _count: { id: true },
+      orderBy: { fetched_at: 'asc' },
+    });
+
+    return {
+      overview: {
+        raw_items: rawItemsCount,
+        processed_items: processedItemsCount,
+        enriched_items: enrichedItemsCount,
+        avg_relevance: relevanceCount > 0 ? Math.round((totalRelevance / relevanceCount) * 100) / 100 : 0,
+        hypotheses_count: hypothesesWithEval.length,
+        supported_hypotheses: hypothesesWithEval.filter(h => h.status === 'SUPPORTED').length,
+        contradicted_hypotheses: hypothesesWithEval.filter(h => h.status === 'CONTRADICTED').length,
+      },
+      sentiments,
+      impacts,
+      top_entities: topEntities,
+      top_topics: topTopics,
+      top_sources: topSources,
+      hypotheses: hypothesesWithEval,
+      insights: insightsWithAnswers,
+      timeline: rawItemsByDate.slice(-30).map(d => ({
+        date: d.fetched_at,
+        count: d._count.id,
+      })),
+    };
+  }
+
+  async getResults(projectId: string, page = 1, limit = 20, filters: any = {}) {
+    const skip = (page - 1) * limit;
+    const where: any = { project_id: projectId };
+    if (filters.sentiment) where.sentiment = filters.sentiment;
+    if (filters.minRelevance) where.relevance_score = { gte: parseFloat(filters.minRelevance) };
+    if (filters.impact) where.hypothesis_impact = filters.impact;
+
+    const [data, total] = await Promise.all([
+      this.prisma.enrichedItem.findMany({
+        where,
+        orderBy: { relevance_score: 'desc' },
+        skip, take: limit,
+      }),
+      this.prisma.enrichedItem.count({ where }),
     ]);
     return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
-  // ─── Stats sentiment d'un projet ─────────────────────────────────────────────
-  async getSentimentStats(projectId: string) {
-    const results = await this.prisma.watchResult.findMany({
-      where: { projectId },
-      select: { sentiment: true },
-    });
-
-    const stats = { POSITIF: 0, NEGATIF: 0, NEUTRE: 0, total: results.length };
-    results.forEach(r => {
-      if (r.sentiment === 'POSITIF') stats.POSITIF++;
-      else if (r.sentiment === 'NEGATIF') stats.NEGATIF++;
-      else stats.NEUTRE++;
-    });
-
-    return stats;
+  async getStats(projectId: string) {
+    const items = await this.prisma.enrichedItem.findMany({ where: { project_id: projectId } });
+    const total = items.length;
+    const sentiments = { POSITIF: 0, NEGATIF: 0, NEUTRE: 0 };
+    let totalRel = 0;
+    for (const i of items) {
+      if (i.sentiment && sentiments[i.sentiment] !== undefined) sentiments[i.sentiment]++;
+      if (i.relevance_score) totalRel += i.relevance_score;
+    }
+    return { total, ...sentiments, avg_relevance: total > 0 ? totalRel / total : 0 };
   }
 
-  // ─── ANALYSE SENTIMENT (simple, sans IA externe) ─────────────────────────────
-  private analyseSentiment(text: string): string {
-    if (!text) return 'NEUTRE';
+  async analyseProject(projectId: string) {
+    const rawItems = await this.prisma.rawData.findMany({ where: { projectId: projectId } });
+    let analysed = 0;
+    for (const item of rawItems) {
+      const existing = await this.prisma.watchResult.findUnique({ where: { rawDataId: item.id } });
+      if (existing) continue;
+      const sentiment = this.detectSentiment(item.content);
+      const trend = this.detectTrend(item.content);
+      const keywords = this.extractKeywords(item.content);
+      await this.prisma.watchResult.create({
+        data: {
+          title: item.title,
+          summary: item.content.substring(0, 300),
+          sentiment, trend, keywords,
+          sourceUrl: item.url,
+          rawDataId: item.id,
+          projectId: item.projectId,
+        },
+      });
+      analysed++;
+    }
+    return { analysed };
+  }
+
+  private detectSentiment(text: string): string {
+    const pos = ['croissance', 'succès', 'innovation', 'hausse', 'progression', 'positif', 'avancée', 'opportunité'];
+    const neg = ['crise', 'baisse', 'problème', 'échec', 'risque', 'menace', 'déclin', 'perte'];
     const lower = text.toLowerCase();
-
-    const positiveWords = ['excellent', 'bon', 'bien', 'super', 'great', 'success',
-      'innov', 'croissance', 'hausse', 'progres', 'amelior', 'opportunit',
-      'profit', 'winner', 'leader', 'avance', 'positif', 'record'];
-
-    const negativeWords = ['mauvais', 'echec', 'crise', 'chute', 'baisse', 'perte',
-      'risque', 'danger', 'probleme', 'deficit', 'faillite', 'fraude',
-      'scandale', 'negatif', 'recul', 'declin', 'fail', 'crash'];
-
-    let score = 0;
-    positiveWords.forEach(w => { if (lower.includes(w)) score++; });
-    negativeWords.forEach(w => { if (lower.includes(w)) score--; });
-
-    if (score > 0) return 'POSITIF';
-    if (score < 0) return 'NEGATIF';
+    const posCount = pos.filter(w => lower.includes(w)).length;
+    const negCount = neg.filter(w => lower.includes(w)).length;
+    if (posCount > negCount) return 'POSITIF';
+    if (negCount > posCount) return 'NEGATIF';
     return 'NEUTRE';
   }
 
-  // ─── DÉTECTION TENDANCE ───────────────────────────────────────────────────────
   private detectTrend(text: string): string {
-    if (!text) return 'STABLE';
     const lower = text.toLowerCase();
-
-    const trendingUp = ['hausse', 'augmentation', 'croissance', 'montee', 'record',
-      'boom', 'surge', 'rise', 'growth', 'increase'];
-    const trendingDown = ['baisse', 'chute', 'recul', 'declin', 'diminution',
-      'fall', 'drop', 'decline', 'decrease'];
-
-    let score = 0;
-    trendingUp.forEach(w => { if (lower.includes(w)) score++; });
-    trendingDown.forEach(w => { if (lower.includes(w)) score--; });
-
-    if (score > 0) return 'HAUSSE';
-    if (score < 0) return 'BAISSE';
+    if (['augmente', 'croît', 'hausse', 'progression', 'monte'].some(w => lower.includes(w))) return 'HAUSSE';
+    if (['diminue', 'baisse', 'décline', 'chute', 'recul'].some(w => lower.includes(w))) return 'BAISSE';
     return 'STABLE';
   }
 
-  // ─── GÉNÉRATION RÉSUMÉ ────────────────────────────────────────────────────────
-  private generateSummary(text: string): string {
-    if (!text) return '';
-    const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 20);
-    return sentences.slice(0, 2).join('. ').trim().substring(0, 300);
-  }
-
-  // ─── EXTRACTION MOTS-CLÉS ────────────────────────────────────────────────────
   private extractKeywords(text: string): string[] {
-    if (!text) return [];
-    const stopWords = ['le', 'la', 'les', 'de', 'du', 'des', 'un', 'une', 'et',
-      'est', 'en', 'au', 'aux', 'the', 'a', 'an', 'is', 'in', 'of', 'to'];
-    const words = text.toLowerCase()
-      .replace(/[^a-zA-ZÀ-ÿ\s]/g, '')
-      .split(/\s+/)
+    const stopWords = ['le', 'la', 'les', 'de', 'du', 'des', 'un', 'une', 'et', 'en', 'à', 'que', 'qui', 'pour', 'par'];
+    const words = text.toLowerCase().replace(/[^a-zA-ZÀ-ÿ\s]/g, '').split(/\s+/)
       .filter(w => w.length > 4 && !stopWords.includes(w));
-
     const freq: Record<string, number> = {};
-    words.forEach(w => { freq[w] = (freq[w] || 0) + 1; });
-
-    return Object.entries(freq)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
-      .map(([word]) => word);
+    for (const w of words) freq[w] = (freq[w] || 0) + 1;
+    return Object.entries(freq).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([w]) => w);
   }
 }

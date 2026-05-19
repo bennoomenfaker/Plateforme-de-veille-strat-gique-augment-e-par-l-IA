@@ -42,7 +42,6 @@ export default function CreateProjectWizard() {
     description: '',
     monitoring_type: 'TECHNOLOGICAL',
     frequency: 'DAILY',
-    end_date: '',
     folder_id: '',
   });
 
@@ -88,7 +87,6 @@ export default function CreateProjectWizard() {
         description: projectForm.description,
         monitoring_type: projectForm.monitoring_type,
         frequency: projectForm.frequency,
-        end_date: projectForm.end_date || null,
         folder_id: projectForm.folder_id || null,
       });
       setProjectId(res.data.id);
@@ -326,14 +324,7 @@ export default function CreateProjectWizard() {
                   </select>
                 </div>
               </div>
-              <div>
-                {label('Date de fin (optionnelle)')}
-                <input type="date" style={inputStyle} value={projectForm.end_date}
-                  onChange={e => setProjectForm({ ...projectForm, end_date: e.target.value })} />
-                <p className="text-xs mt-1" style={{ color: '#4b5568' }}>
-                  La date de début est auto-générée. La date de fin peut être définie via "Clôturer le projet".
-                </p>
-              </div>
+              
             </div>
             <div className="flex justify-end mt-6">
               <button onClick={handleCreateProject} disabled={loading}

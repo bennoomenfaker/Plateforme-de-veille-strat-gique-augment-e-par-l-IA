@@ -165,8 +165,9 @@ model Project {
   alerts       Alert[]
   perimeters   ProjectPerimeter[]
   objectives   ProjectObjective[]
-  scopes       Scope[] // Nouvelle relation périmètre
+  scopes       Scope[] 
   stakeholders ProjectStakeholder[]
+  processedItems ProcessedItem[]
 }
 
 model ProjectObjective {
@@ -424,6 +425,7 @@ model RawItem {
   source_name        String?
   source_url         String?
   article_url        String?
+  file_path          String?   // ← AJOUTÉ pour PDF/UPLOAD
   title              String?
   content_raw        String?   @db.Text
   published_at       DateTime?
@@ -431,4 +433,155 @@ model RawItem {
   hash               String    @unique
   metadata           Json?
   created_at         DateTime  @default(now())
+  processed_item     ProcessedItem?
+
+  @@index([project_id])          
+  @@index([collection_plan_id]) 
+}
+
+enum ProcessingStatus {
+  PENDING
+  RUNNING
+  DONE
+  FAILED
+  SKIPPED
+}
+
+model ProcessedItem {
+  id                 String           @id @default(uuid())
+  raw_item_id        String           @unique
+  project_id         String
+  collection_plan_id String?
+
+  title              String?
+  content_clean      String?          @db.Text
+  content_excerpt    String?          @db.Text
+  language           String?
+  word_count         Int?
+  char_count         Int?
+
+  source_type        String?
+  source_name        String?
+  source_url         String?
+  article_url        String?
+
+  published_at       DateTime?
+  processed_at       DateTime         @default(now())
+
+  processing_status  ProcessingStatus @default(DONE)
+  error_message      String?
+  metadata           Json?
+
+  raw_item  RawItem @relation(fields: [raw_item_id], references: [id], onDelete: Cascade)
+  project   Project @relation(fields: [project_id], references: [id], onDelete: Cascade)
+
+  @@index([project_id])
+  @@index([collection_plan_id])
+  @@index([language])
+  @@index([processed_at])
+}
+
+model ProcessingJob {
+  id           String           @id @default(uuid())
+  project_id   String?
+  plan_id      String?
+  raw_item_id  String?
+
+  status       ProcessingStatus @default(PENDING)
+  trigger_type String           @default("MANUAL")
+
+  total        Int              @default(0)
+  processed    Int              @default(0)
+  skipped      Int              @default(0)
+  failed       Int              @default(0)
+
+  started_at   DateTime?
+  finished_at  DateTime?
+  error        String?
+  logs         Json?
+
+  created_at   DateTime         @default(now())
+
+  @@index([project_id])
+  @@index([status])
+}
+
+enum HypothesisImpact {
+  OPEN
+  PARTIALLY_SUPPORTED
+  SUPPORTED
+  CONTRADICTED
+  NEEDS_MORE_RESEARCH
+}
+
+model EnrichedItem {
+  id                 String   @id @default(uuid())
+  processed_item_id  String   @unique
+  project_id         String
+  collection_plan_id String?
+  hypothesis_id      String?
+
+  answer             String?  @db.Text
+  summary            String?  @db.Text
+  entities           Json?
+  topics             Json?
+  sentiment          String?
+  relevance_score    Float?
+  hypothesis_impact  HypothesisImpact @default(OPEN)
+  confidence_score   Float?
+  raw_response       Json?
+
+  model_used         String?
+  prompt_version     String?
+  enriched_at        DateTime @default(now())
+
+  @@index([project_id])
+  @@index([hypothesis_id])
+  @@index([collection_plan_id])
+}
+
+model AiEnrichmentJob {
+  id                 String           @id @default(uuid())
+  project_id         String?
+  plan_id            String?
+  hypothesis_id      String?
+
+  status             ProcessingStatus @default(PENDING)
+  trigger_type       String           @default("MANUAL")
+
+  total              Int              @default(0)
+  processed          Int              @default(0)
+  skipped            Int              @default(0)
+  failed             Int              @default(0)
+
+  model_used         String?
+  started_at         DateTime?
+  finished_at        DateTime?
+  error              String?
+  logs               Json?
+  created_at         DateTime         @default(now())
+
+  @@index([project_id])
+  @@index([status])
+}
+
+model HypothesisEvaluation {
+  id             String           @id @default(uuid())
+  hypothesis_id  String
+  project_id     String
+
+  status         HypothesisImpact @default(OPEN)
+  confidence     Float?
+  summary        String?          @db.Text
+  evidence_count Int              @default(0)
+  support_count  Int              @default(0)
+  against_count  Int              @default(0)
+  neutral_count  Int              @default(0)
+
+  last_evaluated DateTime         @default(now())
+  created_at     DateTime         @default(now())
+  updated_at     DateTime         @updatedAt
+
+  @@unique([hypothesis_id])
+  @@index([project_id])
 }

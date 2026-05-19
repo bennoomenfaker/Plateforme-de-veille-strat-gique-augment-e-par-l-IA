@@ -2,12 +2,8 @@ import axios from 'axios';
 
 const api = axios.create({
   baseURL: '/api',
-  headers: { 'Content-Type': 'application/json' },
 });
 
-// --- INTERCEPTEURS (Sécurité & Auth) ---
-
-// Ajouter le token automatiquement à chaque requête
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('access_token');
   if (token) {
@@ -16,62 +12,243 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Gérer les erreurs globales (ex: 401 Unauthorized)
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
-    if (error.response?.status === 401) {
-      // Éviter la boucle infinie sur la page admin
-      if (window.location.pathname === '/admin') {
-        return Promise.reject(error);
+    const originalRequest = error.config;
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true;
+      try {
+        const refreshToken = localStorage.getItem('refresh_token');
+        const response = await axios.post('/api/auth/refresh', { refresh_token: refreshToken });
+        const { access_token } = response.data;
+        localStorage.setItem('access_token', access_token);
+        originalRequest.headers.Authorization = `Bearer ${access_token}`;
+        return api(originalRequest);
+      } catch {
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('refresh_token');
+        window.location.href = '/login';
       }
-      localStorage.clear();
-      window.location.href = '/login';
     }
     return Promise.reject(error);
   }
 );
 
-// --- SERVICES CRUDS (Communication Backend) ---
-
-// 1. OBJECTIFS
-export const objectiveService = {
-  getAll: (projectId: string) => api.get(`/projects/${projectId}/objectives`),
-  create: (projectId: string, data: { title: string; description?: string }) => 
-    api.post(`/projects/${projectId}/objectives`, data),
-  update: (projectId: string, id: string, data: { title: string; description?: string }) => 
-    api.put(`/projects/${projectId}/objectives/${id}`, data),
-  delete: (projectId: string, id: string) => 
-    api.delete(`/projects/${projectId}/objectives/${id}`),
-};
-
-// 2. AXES
-export const axisService = {
-  getAll: (objectiveId: string) => api.get(`/objectives/${objectiveId}/axes`),
-  create: (objectiveId: string, data: { title: string }) => 
-    api.post(`/objectives/${objectiveId}/axes`, data),
-  update: (objectiveId: string, id: string, data: { title: string }) => 
-    api.put(`/objectives/${objectiveId}/axes/${id}`, data),
-  delete: (objectiveId: string, id: string) => 
-    api.delete(`/objectives/${objectiveId}/axes/${id}`),
-};
-
-// 3. HYPOTHÈSES
-export const hypothesisService = {
-  create: (axisId: string, data: { title: string; description?: string }) => 
-    api.post(`/axes/${axisId}/hypotheses`, data),
-  update: (axisId: string, id: string, data: { title: string; description?: string }) => 
-    api.put(`/axes/${axisId}/hypotheses/${id}`, data),
-  delete: (axisId: string, id: string) => 
-    api.delete(`/axes/${axisId}/hypotheses/${id}`),
-};
-
-// 4. PÉRIMÈTRES (Point 7.1 - Validation URL)
-export const perimeterService = {
-  create: (projectId: string, data: { name: string; type: string; value: string; objective_id?: string; axis_id?: string }) => 
-    api.post(`/projects/${projectId}/perimeters`, data),
-  delete: (id: string) => 
-    api.delete(`/perimeters/${id}`),
-};
-
 export default api;
+
+// --- 1. AUTH ---
+export const authService = {
+  login: (email: string, password: string) =>
+    api.post('/auth/login', { email, mot_de_passe: password }),
+  register: (data: any) => api.post('/auth/register', data),
+  registerOrg: (data: any) => api.post('/auth/register/organisation', data),
+  logout: () => api.post('/auth/logout'),
+  me: () => api.get('/auth/me'),
+  updateProfile: (data: any) => api.patch('/auth/profile', data),
+  changePassword: (data: any) => api.patch('/auth/change-password', data),
+};
+
+// --- 2. PROJECTS ---
+export const projectsService = {
+  getAll: () => api.get('/projects'),
+  getById: (id: string) => api.get(`/projects/${id}`),
+  create: (data: any) => api.post('/projects', data),
+  update: (id: string, data: any) => api.patch(`/projects/${id}`, data),
+  delete: (id: string) => api.delete(`/projects/${id}`),
+  archive: (id: string) => api.patch(`/projects/${id}/archive`),
+};
+
+// --- 3. ORGANISATIONS ---
+export const orgService = {
+  getMyOrg: () => api.get('/organisations/me'),
+  getMembers: (orgId: string) => api.get(`/organisations/${orgId}/members`),
+  inviteMember: (orgId: string, data: any) =>
+    api.post(`/organisations/${orgId}/invite`, data),
+  removeMember: (orgId: string, memberId: string) =>
+    api.delete(`/organisations/${orgId}/members/${memberId}`),
+  updateMemberRole: (orgId: string, memberId: string, role: string) =>
+    api.patch(`/organisations/${orgId}/members/${memberId}`, { role }),
+};
+
+// --- 4. SOURCES ---
+export const sourcesService = {
+  getByProject: (projectId: string) => api.get(`/sources?projectId=${projectId}`),
+  create: (data: any) => api.post('/sources', data),
+  delete: (id: string) => api.delete(`/sources/${id}`),
+};
+
+// --- 5. COLLECTION PLANS ---
+export const collectionPlansService = {
+  getByProject: (projectId: string) =>
+    api.get(`/collection-plans?projectId=${projectId}`),
+  getById: (id: string) => api.get(`/collection-plans/${id}`),
+  create: (data: any) => api.post('/collection-plans', data),
+  update: (id: string, data: any) => api.patch(`/collection-plans/${id}`, data),
+  delete: (id: string) => api.delete(`/collection-plans/${id}`),
+  triggerCollection: (id: string) =>
+    api.post(`/collection-plans/${id}/collect`),
+};
+
+// --- 6. COLLECTION ENGINE ---
+export const collectionService = {
+  triggerManual: (planId: string) =>
+    api.post(`/collection/trigger/${planId}`),
+  getJobsByPlan: (planId: string) =>
+    api.get(`/collection/jobs/${planId}`),
+};
+
+// --- 7. RAW ITEMS ---
+export const rawItemsService = {
+  getByProject: (projectId: string, page = 1, limit = 20) =>
+    api.get(`/etl/project/${projectId}/raw-items`, { params: { page, limit } }),
+  getByPlan: (planId: string) =>
+    api.get(`/etl/plan/${planId}/raw-items`),
+};
+
+// --- 8. PROCESSING (Sprint 4) ---
+// Routes backend réelles : /projects/:id/process | /projects/:id/processed-items | /projects/:id/processing-stats
+export const processingService = {
+  getStats: (projectId: string) =>
+    api.get(`/projects/${projectId}/processing-stats`),
+
+  getByProject: (
+    projectId: string,
+    page = 1,
+    limit = 20,
+    lang?: string,
+    sourceType?: string,
+  ) =>
+    api.get(`/projects/${projectId}/processed-items`, {
+      params: { page, limit, language: lang, source_type: sourceType },
+    }),
+
+  processProject: (projectId: string) =>
+    api.post(`/projects/${projectId}/process`),
+
+  processByPlan: (planId: string) =>
+    api.post(`/collection-plans/${planId}/process`),
+
+  getByPlan: (planId: string, page = 1, limit = 20) =>
+    api.get(`/collection-plans/${planId}/processed-items`, {
+      params: { page, limit },
+    }),
+
+  getById: (id: string) =>
+    api.get(`/processed-items/${id}`),
+};
+
+// --- 9. UPLOAD ---
+export const uploadService = {
+  uploadPdf: (projectId: string, planId: string, file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('project_id', projectId);
+    formData.append('plan_id', planId);
+    return api.post('/upload/pdf', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+};
+
+// --- 10. OBJECTIVES / AXES / HYPOTHESES ---
+export const objectiveService = {
+  getByProject: (projectId: string) =>
+    api.get(`/objectives?project_id=${projectId}`),
+  create: (projectId: string, data: any) =>
+    api.post('/objectives', { ...data, project_id: projectId }),
+  update: (_projectId: string, id: string, data: any) =>
+    api.patch(`/objectives/${id}`, data),
+  delete: (_projectId: string, id: string) =>
+    api.delete(`/objectives/${id}`),
+};
+
+export const axisService = {
+  create: (objectiveId: string, data: any) =>
+    api.post('/axes', { ...data, objective_id: objectiveId }),
+  update: (_objectiveId: string, id: string, data: any) =>
+    api.patch(`/axes/${id}`, data),
+  delete: (_objectiveId: string, id: string) =>
+    api.delete(`/axes/${id}`),
+};
+
+export const hypothesisService = {
+  create: (axisId: string, data: any) =>
+    api.post('/hypotheses', { ...data, axis_id: axisId }),
+  update: (_axisId: string, id: string, data: any) =>
+    api.patch(`/hypotheses/${id}`, data),
+  delete: (_axisId: string, id: string) =>
+    api.delete(`/hypotheses/${id}`),
+};
+
+// Aliases pour compatibilité avec les imports existants
+export const objectivesService  = objectiveService;
+export const axesService        = axisService;
+export const hypothesesService  = hypothesisService;
+
+// --- 11. AI ENRICHMENT (Sprint 5) ---
+// Routes backend réelles : /projects/:projectId/enrich | /projects/:projectId/enriched-items | etc.
+export const aiEnrichmentService = {
+  enrichProject: (projectId: string, hypothesisId?: string) =>
+    api.post(`/projects/${projectId}/enrich`, {
+      hypothesis_id: hypothesisId,
+    }),
+
+  enrichByPlan: (planId: string) =>
+    api.post(`/collection-plans/${planId}/enrich`),
+
+  getByProject: (
+    projectId: string,
+    page = 1,
+    limit = 20,
+    hypothesisId?: string,
+    impact?: string,
+    minScore?: number,
+  ) =>
+    api.get(`/projects/${projectId}/enriched-items`, {
+      params: {
+        page,
+        limit,
+        hypothesis_id: hypothesisId || undefined,
+        impact:        impact        || undefined,
+        min_score:     minScore,
+      },
+    }),
+
+  getStats: (projectId: string) =>
+    api.get(`/projects/${projectId}/enrichment-stats`),
+
+  getJobs: (projectId: string, limit = 10) =>
+    api.get(`/projects/${projectId}/enrichment-jobs`, {
+      params: { limit },
+    }),
+
+  getHypothesisEvaluations: (projectId: string) =>
+    api.get(`/projects/${projectId}/hypothesis-evaluations`),
+
+  getHypothesisEvaluation: (hypothesisId: string) =>
+    api.get(`/hypothesis-evaluations/${hypothesisId}`),
+
+  getByProcessedItem: (processedItemId: string) =>
+    api.get(`/processed-items/${processedItemId}/enriched`),
+};
+
+// --- 12. ALERTS ---
+export const alertsService = {
+  getMyAlerts: () => api.get('/alertes'),
+  markAsRead: (id: string) => api.patch(`/alertes/${id}/read`),
+};
+
+// --- 13. ADMIN ---
+export const adminService = {
+  getStats: () => api.get('/admin/stats'),
+  getUsers: () => api.get('/admin/users'),
+  suspendUser: (id: string) => api.patch(`/admin/users/${id}/suspend`),
+};
+
+// --- 14. FOLDERS ---
+export const foldersService = {
+  getAll: () => api.get('/folders'),
+  create: (data: any) => api.post('/folders', data),
+  delete: (id: string) => api.delete(`/folders/${id}`),
+};

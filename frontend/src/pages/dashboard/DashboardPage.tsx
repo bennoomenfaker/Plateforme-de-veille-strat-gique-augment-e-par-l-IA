@@ -112,7 +112,9 @@ export default function DashboardPage() {
                     </div>
                     <div>
                       <p className="text-sm font-semibold text-white group-hover:text-blue-400 transition">{project.nom}</p>
-                      <p className="text-xs mt-0.5" style={{color:'#6b7280'}}>{project.sources?.length || 0} source(s) · {project.frequency}</p>
+                      <p className="text-xs mt-0.5" style={{color:'#6b7280'}}>
+  {project._totalSources ?? project.sources?.length ?? 0} source(s) · {project.frequency}
+</p>
                     </div>
                   </div>
                   <span className="text-xs px-2.5 py-1 rounded-full font-semibold"

@@ -3,6 +3,8 @@ import { JwtModule } from '@nestjs/jwt';
 import { CollectionController } from './collection.controller';
 import { CollectionManager } from './collection.manager';
 import { RssService } from './connectors/rss.service';
+import { WebService } from './connectors/web.service';
+import { PdfScraperService } from './connectors/pdf-scraper.service';
 import { KeywordFilter } from './filters/keyword.filter';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -14,7 +16,14 @@ import { PrismaService } from '../prisma/prisma.service';
     }),
   ],
   controllers: [CollectionController],
-  providers: [CollectionManager, RssService, KeywordFilter, PrismaService],
+  providers: [
+    CollectionManager,
+    RssService,
+    WebService,
+    PdfScraperService,
+    KeywordFilter,
+    PrismaService,
+  ],
   exports: [CollectionManager],
 })
 export class CollectionEngineModule {}
