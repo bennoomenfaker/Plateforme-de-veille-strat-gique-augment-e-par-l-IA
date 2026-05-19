@@ -26,6 +26,8 @@ const TOOLTIP_STYLE = {
 export default function ProjectInsightDashboardPage() {
   const { id: projectId } = useParams<{ id: string }>();
   const [activeTab, setActiveTab] = useState<'overview' | 'hypotheses' | 'feed'>('overview');
+  const [sourceFilter, setSourceFilter] = useState('ALL');
+  const [minScore, setMinScore] = useState(0);
 
   // ── Queries ────────────────────────────────────────────────────────────────
 
@@ -64,6 +66,17 @@ export default function ProjectInsightDashboardPage() {
   const objectives = project?.objectives ?? [];
   const feedItems  = feedData?.data ?? [];
   const evals      = Array.isArray(hypothesisEvals) ? hypothesisEvals : [];
+
+  const sourceOptions = [
+    ...new Set(feedItems.map((item: any) => item.source_type ?? item.source_name ?? 'Inconnu')),
+  ].filter(Boolean);
+  const filteredFeedItems = feedItems.filter((item: any) => {
+    const itemSource = item.source_type ?? item.source_name ?? 'Inconnu';
+    const score = Math.round((item.relevance_score ?? 0) * 100);
+    const matchSource = sourceFilter === 'ALL' || itemSource === sourceFilter;
+    const matchScore = score >= minScore;
+    return matchSource && matchScore;
+  });
 
   const impactPie = (Object.entries(IMPACT_CFG) as [HypothesisImpact, { label: string; color: string }][])
     .map(([key, cfg]) => ({
@@ -479,56 +492,123 @@ export default function ProjectInsightDashboardPage() {
               </div>
             ) : (
               <div style={{ ...cardStyle, overflow: 'hidden' }}>
-                <div className="px-5 py-4 flex items-center justify-between"
+                <div className="px-5 py-4 flex items-start justify-between gap-4"
                   style={{ borderBottom: '1px solid #1e2535' }}>
                   <div>
                     <h2 className="text-sm font-bold text-white">Flux d'insights</h2>
                     <p className="text-xs mt-0.5" style={{ color: '#6b7280' }}>
-                      {feedItems.length} résultats
+                      {filteredFeedItems.length} résultat(s) affiché(s) sur {feedItems.length}
                     </p>
                   </div>
                   <Link to={`/projects/${projectId}/enriched`}
-                    className="text-xs font-semibold px-2.5 py-1 rounded-lg"
+                    className="text-xs font-semibold px-2.5 py-1 rounded-lg shrink-0"
                     style={{ background: 'rgba(139,92,246,0.1)', color: '#a78bfa',
                              border: '1px solid rgba(139,92,246,0.2)' }}>
                     Voir tout →
                   </Link>
                 </div>
 
-                {feedItems.map((item: any, i: number) => {
-                  const cfg = IMPACT_CFG[item.hypothesis_impact as HypothesisImpact] ?? IMPACT_CFG.OPEN;
-                  const pct = Math.round((item.relevance_score ?? 0) * 100);
-                  return (
-                    <div key={item.id}
-                      className="px-5 py-4 flex items-start gap-3 hover:bg-white/5 transition"
-                      style={{ borderBottom: i < feedItems.length - 1 ? '1px solid #1e2535' : 'none' }}>
-                      <div className="w-2 h-2 rounded-full mt-2 shrink-0"
-                        style={{ background: cfg.color, boxShadow: `0 0 4px ${cfg.color}` }} />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-white line-clamp-1 mb-1">
-                          {item.title ?? item.processed_item?.title ?? 'Sans titre'}
-                        </p>
-                        <p className="text-xs line-clamp-2" style={{ color: '#6b7280' }}>
-                          {item.summary ?? item.answer ?? 'Aucun résumé'}
-                        </p>
+                <div className="px-5 py-4 grid grid-cols-1 md:grid-cols-3 gap-3"
+                  style={{ borderBottom: '1px solid #1e2535', background: '#0f1117' }}>
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: '#4b5568' }}>
+                      Source
+                    </label>
+                    <select
+                      value={sourceFilter}
+                      onChange={(e) => setSourceFilter(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg text-xs outline-none"
+                      style={{ background: '#161b27', border: '1px solid #1e2535', color: 'white' }}
+                    >
+                      <option value="ALL">Toutes les sources</option>
+                      {sourceOptions.map((source) => (
+                        <option key={String(source)} value={String(source)}>{String(source)}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: '#4b5568' }}>
+                      Score minimum
+                    </label>
+                    <select
+                      value={minScore}
+                      onChange={(e) => setMinScore(Number(e.target.value))}
+                      className="w-full px-3 py-2 rounded-lg text-xs outline-none"
+                      style={{ background: '#161b27', border: '1px solid #1e2535', color: 'white' }}
+                    >
+                      <option value={0}>0%</option>
+                      <option value={20}>20%</option>
+                      <option value={40}>40%</option>
+                      <option value={60}>60%</option>
+                      <option value={80}>80%</option>
+                    </select>
+                  </div>
+
+                  <div className="flex items-end gap-2">
+                    <button
+                      onClick={() => { setSourceFilter('ALL'); setMinScore(0); }}
+                      className="w-full text-xs font-semibold px-3 py-2 rounded-lg transition"
+                      style={{ background: '#1e2535', color: '#9ca3af', border: '1px solid #2d3748' }}
+                    >
+                      Réinitialiser
+                    </button>
+                  </div>
+                </div>
+
+                {filteredFeedItems.length === 0 ? (
+                  <div className="py-16 text-center">
+                    <p className="text-sm font-medium text-white mb-1">Aucun résultat pour ces filtres</p>
+                    <p className="text-xs" style={{ color: '#6b7280' }}>
+                      Ajustez la source ou le score minimum
+                    </p>
+                  </div>
+                ) : (
+                  filteredFeedItems.map((item: any, i: number) => {
+                    const cfg = IMPACT_CFG[item.hypothesis_impact as HypothesisImpact] ?? IMPACT_CFG.OPEN;
+                    const pct = Math.round((item.relevance_score ?? 0) * 100);
+                    return (
+                      <div key={item.id}
+                        className="px-5 py-4 flex items-start gap-3 hover:bg-white/5 transition"
+                        style={{ borderBottom: i < filteredFeedItems.length - 1 ? '1px solid #1e2535' : 'none' }}>
+                        <div className="w-2 h-2 rounded-full mt-2 shrink-0"
+                          style={{ background: cfg.color, boxShadow: `0 0 4px ${cfg.color}` }} />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-white line-clamp-1 mb-1">
+                            {item.title ?? item.processed_item?.title ?? 'Sans titre'}
+                          </p>
+                          <p className="text-xs line-clamp-2" style={{ color: '#6b7280' }}>
+                            {item.summary ?? item.answer ?? 'Aucun résumé'}
+                          </p>
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            <span className="text-[10px] px-2 py-0.5 rounded-full"
+                              style={{ background: 'rgba(59,130,246,0.1)', color: '#60a5fa', border: '1px solid rgba(59,130,246,0.2)' }}>
+                              {item.source_type ?? item.source_name ?? 'Inconnu'}
+                            </span>
+                            <span className="text-[10px] px-2 py-0.5 rounded-full"
+                              style={{ background: 'rgba(16,185,129,0.1)', color: '#34d399', border: '1px solid rgba(16,185,129,0.2)' }}>
+                              {pct}% pertinence
+                            </span>
+                          </div>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <p className="text-sm font-bold mb-1" style={{ color: '#34d399' }}>{pct}%</p>
+                          <p className="text-[10px] mb-1" style={{ color: '#4b5568' }}>
+                            {item.enriched_at
+                              ? new Date(item.enriched_at).toLocaleDateString('fr-FR',
+                                  { day: '2-digit', month: '2-digit', year: 'numeric' })
+                              : '—'}
+                          </p>
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+                            style={{ background: `${cfg.color}20`, color: cfg.color,
+                                     border: `1px solid ${cfg.color}30` }}>
+                            {cfg.label}
+                          </span>
+                        </div>
                       </div>
-                      <div className="shrink-0 text-right">
-                        <p className="text-sm font-bold mb-1" style={{ color: '#34d399' }}>{pct}%</p>
-                        <p className="text-[10px] mb-1" style={{ color: '#4b5568' }}>
-                          {item.enriched_at
-                            ? new Date(item.enriched_at).toLocaleDateString('fr-FR',
-                                { day: '2-digit', month: '2-digit', year: 'numeric' })
-                            : '—'}
-                        </p>
-                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
-                          style={{ background: `${cfg.color}20`, color: cfg.color,
-                                   border: `1px solid ${cfg.color}30` }}>
-                          {cfg.label}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })
+                )}
               </div>
             )}
           </div>

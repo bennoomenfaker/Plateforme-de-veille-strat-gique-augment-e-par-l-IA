@@ -90,6 +90,22 @@ export const collectionPlansService = {
     api.post(`/collection-plans/${id}/collect`),
 };
 
+export const collectionPlanService = {
+  ...collectionPlansService,
+  getJobs: (planId: string) => api.get(`/collection/jobs/${planId}`),
+  getRawItems: (planId: string, page = 1, limit = 15) =>
+    api.get(`/etl/plan/${planId}/raw-items`, { params: { page, limit } }),
+  addSource: (planId: string, data: any) =>
+    api.post(`/collection-plans/${planId}/sources`, data),
+  removeSource: (sourceId: string) =>
+    api.delete(`/collection-plan-sources/${sourceId}`),
+  addKeyword: (planId: string, data: any) =>
+    api.post(`/collection-plans/${planId}/keywords`, data),
+  removeKeyword: (keywordId: string) =>
+    api.delete(`/collection-plan-keywords/${keywordId}`),
+  run: (planId: string) => api.post(`/collection/trigger/${planId}`),
+};
+
 // --- 6. COLLECTION ENGINE ---
 export const collectionService = {
   triggerManual: (planId: string) =>
@@ -140,11 +156,20 @@ export const processingService = {
 
 // --- 9. UPLOAD ---
 export const uploadService = {
-  uploadPdf: (projectId: string, planId: string, file: File) => {
+  getByPlan: (planId: string) => api.get(`/etl/plan/${planId}/raw-items`),
+  uploadPdf: (...args: [projectId: string, planId: string, file: File] | [planId: string, file: File]) => {
+    const hasProjectId = args.length === 3;
+    const projectId = hasProjectId ? args[0] : undefined;
+    const planId = hasProjectId ? args[1] : args[0];
+    const file = hasProjectId ? args[2] : args[1];
+
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('project_id', projectId);
     formData.append('plan_id', planId);
+    if (projectId) {
+      formData.append('project_id', projectId);
+    }
+
     return api.post('/upload/pdf', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
@@ -182,9 +207,9 @@ export const hypothesisService = {
 };
 
 // Aliases pour compatibilité avec les imports existants
-export const objectivesService  = objectiveService;
-export const axesService        = axisService;
-export const hypothesesService  = hypothesisService;
+export const objectivesService = objectiveService;
+export const axesService = axisService;
+export const hypothesesService = hypothesisService;
 
 // --- 11. AI ENRICHMENT (Sprint 5) ---
 // Routes backend réelles : /projects/:projectId/enrich | /projects/:projectId/enriched-items | etc.
@@ -210,8 +235,8 @@ export const aiEnrichmentService = {
         page,
         limit,
         hypothesis_id: hypothesisId || undefined,
-        impact:        impact        || undefined,
-        min_score:     minScore,
+        impact: impact || undefined,
+        min_score: minScore,
       },
     }),
 
