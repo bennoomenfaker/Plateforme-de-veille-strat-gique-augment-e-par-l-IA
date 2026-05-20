@@ -3,6 +3,7 @@ export interface User {
   id: string;
   nom: string;
   email: string;
+  photo_url?: string | null;
   type_utilisateur: 'INDIVIDUEL' | 'ORGANISATION';
   statut: 'ACTIF' | 'INACTIF' | 'SUSPENDU';
   created_at: string;
@@ -14,6 +15,8 @@ export interface Organisation {
   id: string;
   nom: string;
   owner_id: string;
+  my_role?: 'PROPRIETAIRE' | 'MANAGER' | 'EQUIPE_VEILLE' | 'LECTEUR';
+  join_codes?: { equipe_veille?: string; lecteur?: string };
   members?: Membre[];
   projects?: Project[];
   created_at: string;
@@ -103,6 +106,7 @@ export interface CollectionPlanSource {
   id: string;
   source_type: string;
   source_label: string;
+  metadata?: Record<string, unknown> | null;
   source_url: string;
   collection_plan_id: string;
   created_at: string;

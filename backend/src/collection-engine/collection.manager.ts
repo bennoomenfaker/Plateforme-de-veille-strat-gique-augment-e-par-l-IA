@@ -9,7 +9,9 @@ import { RssService } from './connectors/rss.service';
 import { WebService } from './connectors/web.service';
 import { PdfScraperService } from './connectors/pdf-scraper.service';
 import { KeywordFilter } from './filters/keyword.filter';
+import { OrgAccessService } from '../common/org-access.service';
 import * as crypto from 'crypto';
+import axios from 'axios';
 
 @Injectable()
 export class CollectionManager {
@@ -21,6 +23,7 @@ export class CollectionManager {
     private webService: WebService,
     private pdfScraperService: PdfScraperService,
     private keywordFilter: KeywordFilter,
+    private orgAccess: OrgAccessService,
   ) {}
 
   // Legacy ETL
@@ -63,12 +66,14 @@ export class CollectionManager {
         keywords: true,
         hypothesis: {
           include: {
+            hypothesis_perimeters: { include: { perimeter: true } },
             axis: {
               include: {
                 objective: {
                   include: {
                     project: {
                       include: {
+                        perimeters: true,
                         organisation: { include: { members: true } },
                       },
                     },
@@ -85,13 +90,7 @@ export class CollectionManager {
 
     const project = plan.hypothesis.axis.objective.project;
 
-    // Vérification accès multi-tenant
-    const hasAccess =
-      project.owner_user_id === userId ||
-      project.organisation?.members.some(
-        (m) => m.user_id === userId && m.statut === 'ACTIF',
-      );
-    if (!hasAccess) throw new ForbiddenException('Accès refusé');
+    await this.orgAccess.assertProjectWrite(project.id, userId);
 
     //  Créer le job en PENDING d'abord
     const job = await this.prisma.collectionJob.create({
@@ -111,12 +110,16 @@ export class CollectionManager {
       },
     });
 
-    // Préparer keywords
-    const includeKeywords = plan.keywords
-      .filter(
-        (k) => k.keyword_type === 'INCLUDE' || k.keyword_type === 'PRINCIPAL',
-      )
-      .map((k) => k.keyword);
+    // Préparer keywords (plan + périmètres + objectifs du projet)
+    const contextTerms = this.buildContextKeywords(plan, project);
+    const includeKeywords = [
+      ...plan.keywords
+        .filter(
+          (k) => k.keyword_type === 'INCLUDE' || k.keyword_type === 'PRINCIPAL',
+        )
+        .map((k) => k.keyword),
+      ...contextTerms,
+    ].filter((k, i, arr) => k && arr.indexOf(k) === i);
 
     const excludeKeywords = plan.keywords
       .filter((k) => k.keyword_type === 'EXCLUDE')
@@ -152,13 +155,15 @@ export class CollectionManager {
               source.source_url,
             );
 
-          } else if (sourceType === 'UPLOAD') {
-            
+          } else if (sourceType === 'UPLOAD' || sourceType === 'DOCUMENT') {
             this.logger.log(
-              `Source UPLOAD ignorée dans le run automatique (déjà traitée via /uploads/pdf)`,
+              `Source ${sourceType} ignorée dans le run automatique (ajout manuel / upload)`,
             );
             logs.push(sourceLog);
             continue;
+
+          } else if (sourceType === 'API') {
+            rawItems = await this.fetchApiSource(source);
 
           } else {
             this.logger.warn(
@@ -339,5 +344,85 @@ export class CollectionManager {
   
   private sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  private buildContextKeywords(plan: any, project: any): string[] {
+    const terms: string[] = [];
+
+    if (project.keywords?.length) {
+      terms.push(...project.keywords);
+    }
+
+    for (const p of project.perimeters || []) {
+      if (p.value) terms.push(p.value);
+      if (p.name) terms.push(p.name);
+    }
+
+    for (const hp of plan.hypothesis?.hypothesis_perimeters || []) {
+      if (hp.perimeter?.value) terms.push(hp.perimeter.value);
+      if (hp.perimeter?.name) terms.push(hp.perimeter.name);
+    }
+
+    const objective = plan.hypothesis?.axis?.objective;
+    if (objective?.content) {
+      objective.content
+        .split(/\s+/)
+        .filter((w: string) => w.length > 4)
+        .slice(0, 5)
+        .forEach((w: string) => terms.push(w));
+    }
+
+    return terms.filter(Boolean);
+  }
+
+  private async fetchApiSource(source: any): Promise<any[]> {
+    const meta = (source.metadata as Record<string, any>) || {};
+    const method = (meta.api_method || 'GET').toUpperCase();
+    const headers: Record<string, string> =
+      typeof meta.api_headers === 'object' && meta.api_headers
+        ? meta.api_headers
+        : {};
+
+    if (meta.api_key) {
+      headers.Authorization = headers.Authorization || `Bearer ${meta.api_key}`;
+    }
+
+    const response = await axios.request({
+      url: source.source_url,
+      method,
+      headers,
+      timeout: 30000,
+    });
+
+    const payload = response.data;
+    const items = Array.isArray(payload)
+      ? payload
+      : Array.isArray(payload?.items)
+        ? payload.items
+        : Array.isArray(payload?.data)
+          ? payload.data
+          : [payload];
+
+    return items.map((item: any, index: number) => {
+      const title =
+        item.title || item.name || item.headline || `API item ${index + 1}`;
+      const content =
+        item.content || item.description || item.summary || JSON.stringify(item);
+      const url = item.url || item.link || source.source_url;
+      const contentHash = crypto
+        .createHash('sha256')
+        .update(`${title}${content}${url}`)
+        .digest('hex');
+
+      return {
+        title,
+        content,
+        url,
+        contentHash,
+        publishedAt: item.publishedAt
+          ? new Date(item.publishedAt)
+          : new Date(),
+      };
+    });
   }
 }

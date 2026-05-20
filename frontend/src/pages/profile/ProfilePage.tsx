@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import Layout from '../../components/layout/Layout';
 import { authService } from '../../services/api';
 
 export default function ProfilePage() {
-  const { user } = useAuth();
+  const { user, login, token } = useAuth();
+  const fileRef = useRef<HTMLInputElement>(null);
   const [nom, setNom] = useState(user?.nom ?? '');
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -27,7 +28,11 @@ export default function ProfilePage() {
     e.preventDefault();
     setLoading(true); setMsg(''); setError('');
     try {
-      await authService.updateProfile({ nom });
+      const res = await authService.updateProfile({ nom });
+      if (user && token) {
+        const refresh = localStorage.getItem('refresh_token');
+        login(token, refresh || '', { ...user, ...res.data });
+      }
       setMsg('Profil mis à jour avec succès');
     } catch (err: any) {
       setError(err?.response?.data?.message ?? 'Erreur lors de la mise à jour');
@@ -35,6 +40,28 @@ export default function ProfilePage() {
       setLoading(false);
     }
   };
+
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setLoading(true); setMsg(''); setError('');
+    try {
+      const res = await authService.uploadAvatar(file);
+      if (user && token) {
+        const refresh = localStorage.getItem('refresh_token');
+        login(token, refresh || '', { ...user, ...res.data });
+      }
+      setMsg('Photo de profil mise à jour');
+    } catch (err: any) {
+      setError(err?.response?.data?.message ?? 'Erreur upload photo');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const avatarSrc = user?.photo_url
+    ? (user.photo_url.startsWith('http') ? user.photo_url : user.photo_url)
+    : null;
 
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -83,11 +110,20 @@ export default function ProfilePage() {
         {/* Avatar + info */}
         <div style={{ ...cardStyle, marginBottom: '1.5rem' }}>
           <div className="flex items-center gap-4 mb-6">
-            <div className="w-14 h-14 rounded-2xl flex items-center justify-center
-                            text-xl font-bold text-white shrink-0"
-              style={{ background: 'linear-gradient(135deg,#3b82f6,#6366f1)' }}>
-              {user?.nom?.charAt(0).toUpperCase()}
-            </div>
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              className="w-14 h-14 rounded-2xl flex items-center justify-center text-xl font-bold text-white shrink-0 overflow-hidden relative group"
+              style={{ background: 'linear-gradient(135deg,#3b82f6,#6366f1)' }}
+            >
+              {avatarSrc ? (
+                <img src={avatarSrc} alt="" className="w-full h-full object-cover" />
+              ) : (
+                user?.nom?.charAt(0).toUpperCase()
+              )}
+              <span className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 text-[10px] flex items-center justify-center">Modifier</span>
+            </button>
+            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
             <div>
               <p className="text-white font-bold text-lg">{user?.nom}</p>
               <p className="text-sm" style={{ color: '#6b7280' }}>{user?.email}</p>

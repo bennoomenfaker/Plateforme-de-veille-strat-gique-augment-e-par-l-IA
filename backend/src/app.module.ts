@@ -22,10 +22,12 @@ import { AiEnrichmentModule } from './ai-enrichment/ai-enrichment.module';
 import { CollectionEngineModule } from './collection-engine/collection-engine.module';
 import { UploadModule } from './upload/upload.module'; // ← AJOUTÉ
 import { ProcessingModule } from './processing/processing.module';
+import { CommonModule } from './common/common.module';
 
 
 @Module({
   imports: [
+    CommonModule,
     ScheduleModule.forRoot(),
     AuthModule,
     OrganisationsModule,

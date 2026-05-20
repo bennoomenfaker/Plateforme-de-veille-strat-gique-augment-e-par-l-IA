@@ -78,6 +78,7 @@ model User {
   nom              String
   email            String     @unique
   mot_de_passe     String
+  photo_url        String?
   type_utilisateur UserType
   statut           UserStatut @default(ACTIF)
   created_at       DateTime   @default(now())
@@ -94,12 +95,14 @@ model User {
 }
 
 model Organisation {
-  id         String   @id @default(uuid())
-  nom        String
-  owner_id   String
-  owner      User     @relation("OrgOwner", fields: [owner_id], references: [id])
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
+  id                String   @id @default(uuid())
+  nom               String   @unique
+  owner_id          String
+  owner             User     @relation("OrgOwner", fields: [owner_id], references: [id])
+  join_code_equipe  String?
+  join_code_lecteur String?
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
 
   members     MembreOrganisation[]
   projects    Project[]
@@ -275,7 +278,8 @@ model CollectionPlanSource {
   id                 String         @id @default(uuid())
   source_type        String
   source_label       String
-  source_url         String
+  source_url         String?
+  metadata           Json?
   collection_plan_id String
   collection_plan    CollectionPlan @relation(fields: [collection_plan_id], references: [id], onDelete: Cascade)
   created_at         DateTime       @default(now())

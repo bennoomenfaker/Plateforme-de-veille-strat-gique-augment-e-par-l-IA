@@ -1,37 +1,39 @@
-import { Injectable, ForbiddenException, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  ForbiddenException,
+  NotFoundException,
+  BadRequestException,
+  ConflictException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { OrgAccessService } from '../common/org-access.service';
 import * as crypto from 'crypto';
 import * as bcrypt from 'bcrypt';
 
+function generateJoinCode(): string {
+  return crypto.randomBytes(4).toString('hex').toUpperCase();
+}
+
 @Injectable()
 export class OrganisationsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private orgAccess: OrgAccessService,
+  ) {}
 
-  private async checkOwnerOrManager(organisationId: string, userId: string) {
-    const membre = await this.prisma.membreOrganisation.findFirst({
-      where: {
-        organisation_id: organisationId,
-        user_id: userId,
-        role: { in: ['PROPRIETAIRE', 'MANAGER'] },
-        statut: 'ACTIF',
-      },
-    });
-    if (!membre) throw new ForbiddenException('Accès réservé au propriétaire ou manager');
-    return membre;
-  }
-
-  private async checkOwner(organisationId: string, userId: string) {
-    const membre = await this.prisma.membreOrganisation.findFirst({
-      where: { organisation_id: organisationId, user_id: userId, role: 'PROPRIETAIRE', statut: 'ACTIF' },
-    });
-    if (!membre) throw new ForbiddenException('Accès réservé au propriétaire');
-    return membre;
-  }
-
-  // ─── Créer une organisation ───────────────────────────────────────────────────
   async createOrganisation(userId: string, data: any) {
+    const exists = await this.prisma.organisation.findUnique({
+      where: { nom: data.nom.trim() },
+    });
+    if (exists) throw new ConflictException('Ce nom d\'organisation est déjà pris');
+
     const organisation = await this.prisma.organisation.create({
-      data: { nom: data.nom, owner_id: userId },
+      data: {
+        nom: data.nom.trim(),
+        owner_id: userId,
+        join_code_equipe: generateJoinCode(),
+        join_code_lecteur: generateJoinCode(),
+      },
     });
     await this.prisma.membreOrganisation.create({
       data: {
@@ -44,7 +46,6 @@ export class OrganisationsService {
     return organisation;
   }
 
-  // ─── Obtenir une organisation par ID ──────────────────────────────────────────
   async getOrganisation(organisationId: string, userId: string) {
     const membre = await this.prisma.membreOrganisation.findFirst({
       where: { organisation_id: organisationId, user_id: userId, statut: 'ACTIF' },
@@ -55,14 +56,13 @@ export class OrganisationsService {
       where: { id: organisationId },
       include: {
         members: {
-          include: { user: { select: { id: true, nom: true, email: true, statut: true } } },
+          include: { user: { select: { id: true, nom: true, email: true, statut: true, photo_url: true } } },
         },
-        projects: { where: { isActive: true } },
+        projects: { where: { isActive: true, is_deleted: false } },
       },
     });
   }
 
-  // ─── Mon organisation ─────────────────────────────────────────────────────────
   async getMyOrganisation(userId: string) {
     const membre = await this.prisma.membreOrganisation.findFirst({
       where: { user_id: userId, statut: 'ACTIF' },
@@ -70,18 +70,46 @@ export class OrganisationsService {
         organisation: {
           include: {
             members: {
-              include: { user: { select: { id: true, nom: true, email: true, statut: true } } },
+              include: { user: { select: { id: true, nom: true, email: true, statut: true, photo_url: true } } },
             },
-            projects: true,
+            projects: { where: { is_deleted: false } },
           },
         },
       },
     });
     if (!membre) throw new NotFoundException('Aucune organisation trouvée');
-    return membre.organisation;
+
+    let org = membre.organisation;
+    const isOwner = membre.role === 'PROPRIETAIRE';
+
+    if (isOwner && (!org.join_code_equipe || !org.join_code_lecteur)) {
+      org = await this.prisma.organisation.update({
+        where: { id: org.id },
+        data: {
+          join_code_equipe: org.join_code_equipe || generateJoinCode(),
+          join_code_lecteur: org.join_code_lecteur || generateJoinCode(),
+        },
+        include: {
+          members: {
+            include: { user: { select: { id: true, nom: true, email: true, statut: true, photo_url: true } } },
+          },
+          projects: { where: { is_deleted: false } },
+        },
+      });
+    }
+
+    return {
+      ...org,
+      my_role: membre.role,
+      join_codes: isOwner
+        ? {
+            equipe_veille: org.join_code_equipe,
+            lecteur: org.join_code_lecteur,
+          }
+        : undefined,
+    };
   }
 
-  // ─── Lister les membres ───────────────────────────────────────────────────────
   async getMembers(organisationId: string, userId: string) {
     const membre = await this.prisma.membreOrganisation.findFirst({
       where: { organisation_id: organisationId, user_id: userId, statut: 'ACTIF' },
@@ -94,9 +122,28 @@ export class OrganisationsService {
     });
   }
 
-  // ─── Ajouter un membre directement ───────────────────────────────────────────
+  async regenerateJoinCodes(organisationId: string, userId: string) {
+    await this.orgAccess.assertOrgOwner(organisationId, userId);
+    return this.prisma.organisation.update({
+      where: { id: organisationId },
+      data: {
+        join_code_equipe: generateJoinCode(),
+        join_code_lecteur: generateJoinCode(),
+      },
+      select: {
+        id: true,
+        nom: true,
+        join_code_equipe: true,
+        join_code_lecteur: true,
+      },
+    });
+  }
+
   async addMember(organisationId: string, userId: string, data: any) {
-    await this.checkOwnerOrManager(organisationId, userId);
+    await this.orgAccess.assertOrgOwner(organisationId, userId);
+    if (data.role === 'PROPRIETAIRE') {
+      throw new BadRequestException('Impossible d\'ajouter un second propriétaire');
+    }
 
     let targetUser = await this.prisma.user.findUnique({ where: { email: data.email } });
 
@@ -132,9 +179,12 @@ export class OrganisationsService {
     return newMembre;
   }
 
-  // ─── Inviter un collaborateur ────────────────────────────────────────────────
   async inviteMember(organisationId: string, userId: string, data: any) {
-    await this.checkOwnerOrManager(organisationId, userId);
+    await this.orgAccess.assertOrgOwner(organisationId, userId);
+
+    if (data.role === 'PROPRIETAIRE') {
+      throw new BadRequestException('Seul le créateur est propriétaire');
+    }
 
     const existingUser = await this.prisma.user.findUnique({ where: { email: data.email } });
     if (existingUser) {
@@ -166,15 +216,16 @@ export class OrganisationsService {
     return {
       message: 'Invitation envoyée',
       invitation_token: token,
+      invitation_link: `/invitation/${token}`,
       email: data.email,
       role: data.role || 'EQUIPE_VEILLE',
       expires_at: expires,
+      invitation,
     };
   }
 
-  // ─── Révoquer un membre ──────────────────────────────────────────────────────
   async revokeMember(organisationId: string, userId: string, memberId: string) {
-    await this.checkOwner(organisationId, userId);
+    await this.orgAccess.assertOrgOwner(organisationId, userId);
     if (memberId === userId) throw new BadRequestException('Vous ne pouvez pas vous révoquer');
 
     const membre = await this.prisma.membreOrganisation.findFirst({
@@ -188,11 +239,12 @@ export class OrganisationsService {
     return { message: 'Membre révoqué' };
   }
 
-  // ─── Changer le rôle ─────────────────────────────────────────────────────────
   async changeMemberRole(organisationId: string, userId: string, memberId: string, newRole: string) {
-    await this.checkOwner(organisationId, userId);
+    await this.orgAccess.assertOrgOwner(organisationId, userId);
     if (memberId === userId) throw new BadRequestException('Impossible de changer votre propre rôle');
-    if (newRole === 'PROPRIETAIRE') throw new ForbiddenException('Impossible d\'assigner le rôle PROPRIETAIRE');
+    if (newRole === 'PROPRIETAIRE') {
+      throw new ForbiddenException('Un seul propriétaire par organisation');
+    }
 
     const membre = await this.prisma.membreOrganisation.findFirst({
       where: { organisation_id: organisationId, user_id: memberId },
@@ -208,16 +260,17 @@ export class OrganisationsService {
     return { message: 'Rôle modifié', membre: updated };
   }
 
-  // ─── Changer le statut d'un membre ───────────────────────────────────────────
   async changeMemberStatus(organisationId: string, userId: string, memberId: string, newStatut: string) {
-    await this.checkOwnerOrManager(organisationId, userId);
+    await this.orgAccess.assertOrgOwner(organisationId, userId);
     if (memberId === userId) throw new BadRequestException('Impossible de modifier votre propre statut');
 
     const membre = await this.prisma.membreOrganisation.findFirst({
       where: { organisation_id: organisationId, user_id: memberId },
     });
     if (!membre) throw new NotFoundException('Membre introuvable');
-    if (membre.role === 'PROPRIETAIRE') throw new ForbiddenException('Impossible de modifier le statut du propriétaire');
+    if (membre.role === 'PROPRIETAIRE') {
+      throw new ForbiddenException('Impossible de modifier le statut du propriétaire');
+    }
 
     const updated = await this.prisma.membreOrganisation.update({
       where: { id: membre.id },
@@ -228,9 +281,8 @@ export class OrganisationsService {
     return { message: 'Statut modifié', membre: updated };
   }
 
-  // ─── Historique invitations ───────────────────────────────────────────────────
   async getInvitationsHistory(organisationId: string, userId: string) {
-    await this.checkOwnerOrManager(organisationId, userId);
+    await this.orgAccess.assertOrgOwner(organisationId, userId);
     return this.prisma.invitationOrganisation.findMany({
       where: { organisation_id: organisationId },
       orderBy: { created_at: 'desc' },

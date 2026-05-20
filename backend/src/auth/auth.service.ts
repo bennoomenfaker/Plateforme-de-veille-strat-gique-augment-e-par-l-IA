@@ -1,8 +1,18 @@
-import { Injectable, UnauthorizedException, ConflictException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  UnauthorizedException,
+  ConflictException,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
+
+function generateJoinCode(): string {
+  return crypto.randomBytes(4).toString('hex').toUpperCase();
+}
 
 @Injectable()
 export class AuthService {
@@ -32,12 +42,90 @@ export class AuthService {
     return result;
   }
 
-  // ─── REGISTER ORGANISATION ───────────────────────────────────────────────────
+  // ─── REGISTER ORGANISATION (création ou adhésion) ───────────────────────────
   async registerOrganisation(data: any) {
     const existing = await this.prisma.user.findUnique({ where: { email: data.email } });
     if (existing) throw new ConflictException('Email déjà utilisé');
 
+    const mode = data.mode === 'JOIN' ? 'JOIN' : 'CREATE';
     const hashedPassword = await bcrypt.hash(data.mot_de_passe, 10);
+
+    if (mode === 'CREATE') {
+      const orgExists = await this.prisma.organisation.findUnique({
+        where: { nom: data.nom_organisation.trim() },
+      });
+      if (orgExists) {
+        throw new ConflictException(
+          'Cette organisation existe déjà. Rejoignez-la avec le code fourni par le propriétaire.',
+        );
+      }
+
+      const user = await this.prisma.user.create({
+        data: {
+          nom: data.nom,
+          email: data.email,
+          mot_de_passe: hashedPassword,
+          type_utilisateur: 'ORGANISATION',
+          statut: 'ACTIF',
+        },
+      });
+
+      const organisation = await this.prisma.organisation.create({
+        data: {
+          nom: data.nom_organisation.trim(),
+          owner_id: user.id,
+          join_code_equipe: generateJoinCode(),
+          join_code_lecteur: generateJoinCode(),
+        },
+      });
+
+      await this.prisma.membreOrganisation.create({
+        data: {
+          organisation_id: organisation.id,
+          user_id: user.id,
+          role: 'PROPRIETAIRE',
+          statut: 'ACTIF',
+        },
+      });
+
+      await this.logActivity(user.id, 'REGISTER_ORGANISATION', 'organisation', organisation.id);
+      const { mot_de_passe, ...userResult } = user;
+      return {
+        user: userResult,
+        organisation,
+        join_codes: {
+          equipe_veille: organisation.join_code_equipe,
+          lecteur: organisation.join_code_lecteur,
+        },
+      };
+    }
+
+    // ─── JOIN : rejoindre une organisation existante ─────────────────────────
+    const role = data.role;
+    if (!role || !['EQUIPE_VEILLE', 'LECTEUR'].includes(role)) {
+      throw new BadRequestException(
+        'Rôle invalide. Choisissez Équipe de veille ou Lecteur.',
+      );
+    }
+    if (!data.join_code?.trim()) {
+      throw new BadRequestException('Code confidentiel requis pour rejoindre l\'organisation');
+    }
+
+    const organisation = await this.prisma.organisation.findUnique({
+      where: { nom: data.nom_organisation.trim() },
+    });
+    if (!organisation) {
+      throw new NotFoundException('Organisation introuvable. Vérifiez le nom exact.');
+    }
+
+    const expectedCode =
+      role === 'EQUIPE_VEILLE'
+        ? organisation.join_code_equipe
+        : organisation.join_code_lecteur;
+
+    if (!expectedCode || data.join_code.trim().toUpperCase() !== expectedCode) {
+      throw new BadRequestException('Code confidentiel incorrect pour ce rôle');
+    }
 
     const user = await this.prisma.user.create({
       data: {
@@ -49,25 +137,18 @@ export class AuthService {
       },
     });
 
-    const organisation = await this.prisma.organisation.create({
-      data: {
-        nom: data.nom_organisation,
-        owner_id: user.id,
-      },
-    });
-
     await this.prisma.membreOrganisation.create({
       data: {
         organisation_id: organisation.id,
         user_id: user.id,
-        role: 'PROPRIETAIRE',
+        role,
         statut: 'ACTIF',
       },
     });
 
-    await this.logActivity(user.id, 'REGISTER_ORGANISATION', 'organisation', organisation.id);
+    await this.logActivity(user.id, 'JOIN_ORGANISATION', 'organisation', organisation.id);
     const { mot_de_passe, ...userResult } = user;
-    return { user: userResult, organisation };
+    return { user: userResult, organisation, role };
   }
 
   // ─── VALIDER TOKEN INVITATION ────────────────────────────────────────────────
@@ -78,13 +159,19 @@ export class AuthService {
     });
 
     if (!invitation) throw new BadRequestException('Token invalide');
-    if (invitation.status !== 'PENDING') throw new BadRequestException('Invitation déjà utilisée ou expirée');
+    if (invitation.status !== 'PENDING') {
+      throw new BadRequestException('Invitation déjà utilisée ou expirée');
+    }
     if (invitation.expires_at < new Date()) {
       await this.prisma.invitationOrganisation.update({
         where: { token },
         data: { status: 'EXPIRED' },
       });
       throw new BadRequestException('Token expiré');
+    }
+
+    if (invitation.role === 'PROPRIETAIRE') {
+      throw new BadRequestException('Invitation propriétaire non autorisée');
     }
 
     let user = await this.prisma.user.findUnique({ where: { email: invitation.email } });
@@ -102,6 +189,11 @@ export class AuthService {
         },
       });
     }
+
+    const alreadyMember = await this.prisma.membreOrganisation.findFirst({
+      where: { organisation_id: invitation.organisation_id, user_id: user.id },
+    });
+    if (alreadyMember) throw new BadRequestException('Vous êtes déjà membre de cette organisation');
 
     await this.prisma.membreOrganisation.create({
       data: {
@@ -185,6 +277,44 @@ export class AuthService {
     return result;
   }
 
+  // ─── PROFIL ──────────────────────────────────────────────────────────────────
+  async updateProfile(userId: string, data: { nom?: string; photo_url?: string }) {
+    const user = await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        ...(data.nom !== undefined ? { nom: data.nom } : {}),
+        ...(data.photo_url !== undefined ? { photo_url: data.photo_url } : {}),
+      },
+    });
+    await this.logActivity(userId, 'UPDATE_PROFILE', 'user', userId);
+    const { mot_de_passe, ...result } = user;
+    return result;
+  }
+
+  async changePassword(
+    userId: string,
+    data: { currentPassword: string; newPassword: string },
+  ) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new UnauthorizedException('Utilisateur introuvable');
+
+    const valid = await bcrypt.compare(data.currentPassword, user.mot_de_passe);
+    if (!valid) {
+      throw new BadRequestException('Mot de passe actuel incorrect');
+    }
+    if (!data.newPassword || data.newPassword.length < 8) {
+      throw new BadRequestException('Le nouveau mot de passe doit contenir au moins 8 caractères');
+    }
+
+    const hashedPassword = await bcrypt.hash(data.newPassword, 10);
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { mot_de_passe: hashedPassword },
+    });
+    await this.logActivity(userId, 'CHANGE_PASSWORD', 'user', userId);
+    return { message: 'Mot de passe modifié avec succès' };
+  }
+
   // ─── LOGIN SUPER ADMIN ───────────────────────────────────────────────────────
   async loginSuperAdmin(data: any) {
     const SUPER_ADMIN_EMAIL = process.env.SUPER_ADMIN_EMAIL || 'admin@veille.com';
@@ -211,7 +341,11 @@ export class AuthService {
       throw new UnauthorizedException('Refresh token expiré');
     }
 
-    const payload = { sub: stored.user.id, email: stored.user.email, type: stored.user.type_utilisateur };
+    const payload = {
+      sub: stored.user.id,
+      email: stored.user.email,
+      type: stored.user.type_utilisateur,
+    };
     const newAccessToken = this.jwtService.sign(payload);
     const newRefreshToken = await this.generateRefreshToken(stored.user.id);
     await this.prisma.refreshToken.delete({ where: { token } });

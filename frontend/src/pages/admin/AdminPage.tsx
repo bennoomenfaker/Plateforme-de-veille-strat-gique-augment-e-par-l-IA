@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import api from '../../services/api';
+import api, { adminService } from '../../services/api';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 type Tab = 'dashboard' | 'users' | 'organisations' | 'logs' | 'pipeline';
 
 export default function AdminPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [tab, setTab] = useState<Tab>('dashboard');
   const [adminToken, setAdminToken] = useState(localStorage.getItem('admin_token') || '');
   const [email, setEmail] = useState('');
@@ -69,6 +71,23 @@ export default function AdminPage() {
     localStorage.removeItem('admin_token');
     setAdminToken('');
   };
+
+  const adminHeaders = { headers: { Authorization: `Bearer ${adminToken}` } };
+
+  const deleteUserMutation = useMutation({
+    mutationFn: (id: string) => api.delete(`/admin/users/${id}`, adminHeaders),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-users'] }),
+  });
+
+  const suspendUserMutation = useMutation({
+    mutationFn: (id: string) => api.patch(`/admin/users/${id}/suspend`, {}, adminHeaders),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-users'] }),
+  });
+
+  const deleteOrgMutation = useMutation({
+    mutationFn: (id: string) => api.delete(`/admin/organisations/${id}`, adminHeaders),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-orgs'] }),
+  });
 
   const sideStyle = { background: '#161b27', border: '1px solid #1e2535' };
 
@@ -297,6 +316,9 @@ export default function AdminPage() {
                       }>
                       {u.statut}
                     </span>
+                    <button onClick={async () => { const n = prompt('Nouveau nom', u.nom); if (n) { await api.patch(`/admin/users/${u.id}`, { nom: n }, adminHeaders); queryClient.invalidateQueries({ queryKey: ['admin-users'] }); } }} className="text-xs px-2 py-1 rounded-lg" style={{ color: '#60a5fa', border: '1px solid rgba(59,130,246,0.3)' }}>Modifier</button>
+                    {u.statut === 'ACTIF' && <button onClick={() => suspendUserMutation.mutate(u.id)} className="text-xs px-2 py-1 rounded-lg" style={{ color: '#fbbf24', border: '1px solid rgba(251,191,36,0.3)' }}>Suspendre</button>}
+                    <button onClick={() => { if (confirm('Supprimer ?')) deleteUserMutation.mutate(u.id); }} className="text-xs px-2 py-1 rounded-lg" style={{ color: '#f87171', border: '1px solid rgba(239,68,68,0.3)' }}>Supprimer</button>
                   </div>
                 </div>
               ))}
@@ -325,6 +347,28 @@ export default function AdminPage() {
                     <span className="text-xs px-2.5 py-1 rounded-full" style={{ background: 'rgba(16,185,129,0.1)', color: '#34d399' }}>
                       {o._count?.projects ?? 0} projet(s)
                     </span>
+                    <button
+                      onClick={async () => {
+                        const n = prompt('Nouveau nom organisation', o.nom);
+                        if (n) {
+                          await api.patch(`/admin/organisations/${o.id}`, { nom: n }, adminHeaders);
+                          queryClient.invalidateQueries({ queryKey: ['admin-orgs'] });
+                        }
+                      }}
+                      className="text-xs px-2 py-1 rounded-lg"
+                      style={{ color: '#60a5fa', border: '1px solid rgba(59,130,246,0.3)' }}
+                    >
+                      Modifier
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (confirm('Supprimer cette organisation ?')) deleteOrgMutation.mutate(o.id);
+                      }}
+                      className="text-xs px-2 py-1 rounded-lg"
+                      style={{ color: '#f87171', border: '1px solid rgba(239,68,68,0.3)' }}
+                    >
+                      Supprimer
+                    </button>
                   </div>
                 </div>
               ))}

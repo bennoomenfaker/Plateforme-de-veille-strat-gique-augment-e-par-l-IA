@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import api from '../../services/api';
+import api, { formatApiError } from '../../services/api';
 
 export default function RegisterPage() {
   const navigate = useNavigate();
@@ -24,7 +24,7 @@ export default function RegisterPage() {
       });
       navigate('/login');
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors de l\'inscription');
+      setError(formatApiError(err, "Erreur lors de l'inscription"));
     } finally {
       setLoading(false);
     }

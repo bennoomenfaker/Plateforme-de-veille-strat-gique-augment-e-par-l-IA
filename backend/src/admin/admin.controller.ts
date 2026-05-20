@@ -1,4 +1,13 @@
-import { Controller, Get, Delete, Param, Query, UseGuards, Request } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Delete,
+  Patch,
+  Param,
+  Query,
+  Body,
+  UseGuards,
+} from '@nestjs/common';
 import { AdminService } from './admin.service';
 import { JwtAuthGuard } from '../auth/jwt.guard';
 import { SuperAdminGuard } from '../auth/super-admin.guard';
@@ -8,13 +17,11 @@ import { SuperAdminGuard } from '../auth/super-admin.guard';
 export class AdminController {
   constructor(private readonly adminService: AdminService) {}
 
-  // GET /admin/dashboard → stats globales
   @Get('dashboard')
   async getDashboard() {
     return this.adminService.getDashboard();
   }
 
-  // GET /admin/users → tous les utilisateurs
   @Get('users')
   async getUsers(
     @Query('page') page = '1',
@@ -23,13 +30,21 @@ export class AdminController {
     return this.adminService.getAllUsers(parseInt(page), parseInt(limit));
   }
 
-  // DELETE /admin/users/:id → supprimer utilisateur
+  @Patch('users/:id')
+  async updateUser(@Param('id') id: string, @Body() body: any) {
+    return this.adminService.updateUser(id, body);
+  }
+
+  @Patch('users/:id/suspend')
+  async suspendUser(@Param('id') id: string) {
+    return this.adminService.suspendUser(id);
+  }
+
   @Delete('users/:id')
   async deleteUser(@Param('id') id: string) {
     return this.adminService.deleteUser(id);
   }
 
-  // GET /admin/organisations → toutes les organisations
   @Get('organisations')
   async getOrganisations(
     @Query('page') page = '1',
@@ -38,13 +53,38 @@ export class AdminController {
     return this.adminService.getAllOrganisations(parseInt(page), parseInt(limit));
   }
 
-  // DELETE /admin/organisations/:id → supprimer organisation
+  @Get('organisations/:id')
+  async getOrganisation(@Param('id') id: string) {
+    return this.adminService.getOrganisation(id);
+  }
+
+  @Patch('organisations/:id')
+  async updateOrganisation(@Param('id') id: string, @Body() body: { nom?: string }) {
+    return this.adminService.updateOrganisation(id, body);
+  }
+
+  @Patch('organisations/:orgId/members/:memberId/role')
+  async updateMemberRole(
+    @Param('orgId') orgId: string,
+    @Param('memberId') memberId: string,
+    @Body() body: { role: string },
+  ) {
+    return this.adminService.updateOrganisationMemberRole(orgId, memberId, body.role);
+  }
+
+  @Delete('organisations/:orgId/members/:memberId')
+  async removeMember(
+    @Param('orgId') orgId: string,
+    @Param('memberId') memberId: string,
+  ) {
+    return this.adminService.removeOrganisationMember(orgId, memberId);
+  }
+
   @Delete('organisations/:id')
   async deleteOrganisation(@Param('id') id: string) {
     return this.adminService.deleteOrganisation(id);
   }
 
-  // GET /admin/logs → logs d'activités
   @Get('logs')
   async getLogs(
     @Query('page') page = '1',
@@ -53,19 +93,16 @@ export class AdminController {
     return this.adminService.getActivityLogs(parseInt(page), parseInt(limit));
   }
 
-  // GET /admin/projects → supervision projets
   @Get('projects')
   async getProjects() {
     return this.adminService.getProjectsSupervision();
   }
 
-  // GET /admin/pipeline → supervision ETL
   @Get('pipeline')
   async getPipeline() {
     return this.adminService.getPipelineStatus();
   }
 
-  // GET /admin/quotas → gestion quotas
   @Get('quotas')
   async getQuotas() {
     return this.adminService.getQuotas();

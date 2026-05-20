@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Layout from '../../components/layout/Layout';
 import { collectionPlanService, uploadService } from '../../services/api';
+import { useOrgRole } from '../../hooks/useOrgRole';
 import type { CollectionJob, RawItem } from '../../types';
 
 const SOURCE_TYPE_COLORS: Record<string, { bg: string; color: string; border: string }> = {
@@ -57,7 +58,15 @@ export default function CollectionPlanDetailPage() {
   const [uploading, setUploading] = useState(false);
   const [uploadMsg, setUploadMsg] = useState('');
   const [showAddSource, setShowAddSource] = useState(false);
-  const [newSource, setNewSource] = useState({ source_type: 'RSS', source_label: '', source_url: '' });
+  const { canWrite } = useOrgRole();
+  const [newSource, setNewSource] = useState({
+    source_type: 'RSS',
+    source_label: '',
+    source_url: '',
+    api_key: '',
+    api_method: 'GET',
+    document_note: '',
+  });
   const [addingSource, setAddingSource] = useState(false);
   const [addSourceMsg, setAddSourceMsg] = useState('');
   const [newKeyword, setNewKeyword] = useState('');
@@ -103,19 +112,32 @@ export default function CollectionPlanDetailPage() {
 
   // Handlers
   const handleAddSource = async () => {
-    if (!newSource.source_label || !newSource.source_url) {
-      setAddSourceMsg('Label et URL obligatoires');
+    const type = newSource.source_type.toUpperCase();
+    if (!newSource.source_label.trim()) {
+      setAddSourceMsg('Le libellé est obligatoire');
+      return;
+    }
+    if ((type === 'RSS' || type === 'WEB' || type === 'PDF' || type === 'API') && !newSource.source_url.trim()) {
+      setAddSourceMsg('URL obligatoire pour ce type de source');
       return;
     }
     setAddingSource(true);
     setAddSourceMsg('');
     try {
       await collectionPlanService.addSource(planId!, {
-        source_type: newSource.source_type,
-        source_label: newSource.source_label,
-        source_url: newSource.source_url,
+        source_type: type,
+        source_label: newSource.source_label.trim(),
+        source_url: newSource.source_url.trim() || undefined,
+        api_key: newSource.api_key || undefined,
+        api_method: newSource.api_method,
+        metadata:
+          type === 'API'
+            ? { api_key: newSource.api_key, api_method: newSource.api_method }
+            : type === 'DOCUMENT'
+              ? { document_note: newSource.document_note }
+              : undefined,
       });
-      setNewSource({ source_type: 'RSS', source_label: '', source_url: '' });
+      setNewSource({ source_type: 'RSS', source_label: '', source_url: '', api_key: '', api_method: 'GET', document_note: '' });
       setShowAddSource(false);
       setAddSourceMsg('Source ajoutee avec succes');
       queryClient.invalidateQueries({ queryKey: ['collection-plan', planId] });
@@ -379,7 +401,9 @@ export default function CollectionPlanDetailPage() {
                       style={inputStyle}>
                       <option value="RSS">RSS</option>
                       <option value="WEB">Web</option>
-                      <option value="PDF">PDF</option>
+                      <option value="PDF">PDF (liens)</option>
+                      <option value="API">API</option>
+                      <option value="DOCUMENT">Document (upload manuel)</option>
                     </select>
                     <input
                       value={newSource.source_label}
@@ -387,12 +411,26 @@ export default function CollectionPlanDetailPage() {
                       placeholder="Label (ex: TechCrunch)"
                       style={inputStyle}
                     />
-                    <input
-                      value={newSource.source_url}
-                      onChange={e => setNewSource({ ...newSource, source_url: e.target.value })}
-                      placeholder="https://example.com/feed/"
-                      style={inputStyle}
-                    />
+                    {newSource.source_type !== 'DOCUMENT' && (
+                      <input
+                        value={newSource.source_url}
+                        onChange={e => setNewSource({ ...newSource, source_url: e.target.value })}
+                        placeholder={newSource.source_type === 'API' ? 'https://api.example.com/data' : 'https://example.com/feed/'}
+                        style={inputStyle}
+                      />
+                    )}
+                    {newSource.source_type === 'API' && (
+                      <>
+                        <select value={newSource.api_method} onChange={e => setNewSource({ ...newSource, api_method: e.target.value })} style={inputStyle}>
+                          <option value="GET">GET</option>
+                          <option value="POST">POST</option>
+                        </select>
+                        <input value={newSource.api_key} onChange={e => setNewSource({ ...newSource, api_key: e.target.value })} placeholder="Clé API (optionnel)" style={inputStyle} />
+                      </>
+                    )}
+                    {newSource.source_type === 'DOCUMENT' && (
+                      <input value={newSource.document_note} onChange={e => setNewSource({ ...newSource, document_note: e.target.value })} placeholder="Référence document / instructions" style={inputStyle} />
+                    )}
                   </div>
 
                   {/* Suggestions */}

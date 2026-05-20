@@ -1,6 +1,26 @@
-import { Controller, Post, Get, Body, UseGuards, Request } from '@nestjs/common';
+import {
+  BadRequestException,
+  Controller,
+  Post,
+  Get,
+  Patch,
+  Body,
+  UseGuards,
+  Request,
+  UseInterceptors,
+  UploadedFile,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { extname, join } from 'path';
+import { existsSync, mkdirSync } from 'fs';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './jwt.guard';
+
+const avatarDir = process.env.UPLOAD_AVATAR_DIR || join(process.cwd(), 'uploads', 'avatars');
+if (!existsSync(avatarDir)) {
+  mkdirSync(avatarDir, { recursive: true });
+}
 
 @Controller('auth')
 export class AuthController {
@@ -35,6 +55,47 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   async getMe(@Request() req: any) {
     return this.authService.getMe(req.user.userId);
+  }
+
+  @Patch('profile')
+  @UseGuards(JwtAuthGuard)
+  async updateProfile(@Request() req: any, @Body() body: { nom?: string }) {
+    return this.authService.updateProfile(req.user.userId, body);
+  }
+
+  @Patch('change-password')
+  @UseGuards(JwtAuthGuard)
+  async changePassword(
+    @Request() req: any,
+    @Body() body: { currentPassword: string; newPassword: string },
+  ) {
+    return this.authService.changePassword(req.user.userId, body);
+  }
+
+  @Post('profile/avatar')
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: diskStorage({
+        destination: avatarDir,
+        filename: (_req, file, cb) => {
+          const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
+          cb(null, `${unique}${extname(file.originalname)}`);
+        },
+      }),
+      fileFilter: (_req, file, cb) => {
+        if (!file.mimetype.startsWith('image/')) {
+          return cb(new Error('Seules les images sont acceptées'), false);
+        }
+        cb(null, true);
+      },
+      limits: { fileSize: 5 * 1024 * 1024 },
+    }),
+  )
+  async uploadAvatar(@Request() req: any, @UploadedFile() file: Express.Multer.File) {
+    if (!file) throw new BadRequestException('Fichier requis');
+    const photo_url = `/uploads/avatars/${file.filename}`;
+    return this.authService.updateProfile(req.user.userId, { photo_url });
   }
 
   @Post('refresh')

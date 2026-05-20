@@ -76,4 +76,10 @@ export class OrganisationsController {
   async getInvitations(@Param('id') id: string, @Request() req: any) {
     return this.organisationsService.getInvitationsHistory(id, req.user.userId);
   }
+
+  // POST /organisations/:id/regenerate-codes → régénérer codes confidentiels (propriétaire)
+  @Post(':id/regenerate-codes')
+  async regenerateCodes(@Param('id') id: string, @Request() req: any) {
+    return this.organisationsService.regenerateJoinCodes(id, req.user.userId);
+  }
 }

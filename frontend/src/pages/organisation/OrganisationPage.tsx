@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Layout from '../../components/layout/Layout';
-import api from '../../services/api';
+import api, { orgService } from '../../services/api';
 
 export default function OrganisationPage() {
   const queryClient = useQueryClient();
@@ -11,8 +11,10 @@ export default function OrganisationPage() {
 
   const { data: org, isLoading } = useQuery({
     queryKey: ['organisation'],
-    queryFn: () => api.get('/organisations/me').then(r => r.data),
+    queryFn: () => orgService.getMyOrg().then(r => r.data),
   });
+
+  const isOwner = org?.my_role === 'PROPRIETAIRE';
 
   const inviteMutation = useMutation({
     mutationFn: (data: any) => api.post(`/organisations/${org?.id}/invite`, data),
@@ -87,14 +89,16 @@ export default function OrganisationPage() {
                 {org.members?.length || 0} membre(s) · {org.projects?.length || 0} projet(s)
               </p>
             </div>
-            <button onClick={() => setShowInviteForm(true)}
-              className="inline-flex items-center gap-2 text-sm font-semibold px-5 py-2.5 rounded-xl"
-              style={{background:'linear-gradient(135deg,#3b82f6,#6366f1)', color:'white'}}>
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
-              </svg>
-              Inviter un membre
-            </button>
+            {isOwner && (
+              <button onClick={() => setShowInviteForm(true)}
+                className="inline-flex items-center gap-2 text-sm font-semibold px-5 py-2.5 rounded-xl"
+                style={{background:'linear-gradient(135deg,#3b82f6,#6366f1)', color:'white'}}>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                </svg>
+                Inviter un membre
+              </button>
+            )}
           </div>
         </div>
 
@@ -160,6 +164,17 @@ export default function OrganisationPage() {
           </div>
         )}
 
+        {isOwner && org.join_codes && (
+          <div className="mb-6 p-4 rounded-2xl" style={{background:'#161b27', border:'1px solid #1e2535'}}>
+            <p className="text-sm font-bold text-white mb-2">Codes confidentiels (adhésion)</p>
+            <p className="text-xs mb-3" style={{color:'#6b7280'}}>Partagez ces codes avec votre équipe pour qu&apos;ils rejoignent l&apos;organisation sans créer de doublon.</p>
+            <div className="flex flex-wrap gap-4 text-sm">
+              <span style={{color:'#60a5fa'}}>Équipe veille: <strong className="text-white font-mono">{org.join_codes.equipe_veille}</strong></span>
+              <span style={{color:'#9ca3af'}}>Lecteur: <strong className="text-white font-mono">{org.join_codes.lecteur}</strong></span>
+            </div>
+          </div>
+        )}
+
         {/* Tabs */}
         <div className="flex gap-1 mb-6 p-1 rounded-xl w-fit" style={{background:'#161b27', border:'1px solid #1e2535'}}>
           {[['members','Membres'],['invitations','Invitations']].map(([tab, label]) => (
@@ -197,7 +212,7 @@ export default function OrganisationPage() {
                     <span className="text-xs px-2.5 py-1 rounded-full font-semibold" style={roleStyle(m.role)}>
                       {roleLabel(m.role)}
                     </span>
-                    {m.role !== 'PROPRIETAIRE' && (
+                    {isOwner && m.role !== 'PROPRIETAIRE' && (
                       <button onClick={() => revokeMutation.mutate(m.user_id)}
                         className="text-xs px-2.5 py-1 rounded-lg font-medium transition"
                         style={{background:'rgba(239,68,68,0.1)', color:'#f87171', border:'1px solid rgba(239,68,68,0.2)'}}>

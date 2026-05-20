@@ -5,6 +5,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { OrgAccessService } from '../common/org-access.service';
 
 // ─── Helper validation URL ────────────────────────────────────────────────────
 function isValidUrl(url: string): boolean {
@@ -16,21 +17,64 @@ function isValidUrl(url: string): boolean {
   }
 }
 
+function validateSourcePayload(data: any) {
+  const type = (data.source_type || 'RSS').toUpperCase();
+  const metadata = data.metadata || {};
+
+  if (type === 'DOCUMENT' || type === 'UPLOAD') {
+    if (!data.source_label?.trim()) {
+      throw new BadRequestException('Le libellé est obligatoire pour une source document');
+    }
+    return { type, metadata, url: data.source_url?.trim() || null };
+  }
+
+  if (type === 'API') {
+    if (!data.source_url?.trim()) {
+      throw new BadRequestException("L'URL de l'endpoint API est obligatoire");
+    }
+    if (!isValidUrl(data.source_url.trim())) {
+      throw new BadRequestException('URL API invalide');
+    }
+    return {
+      type,
+      url: data.source_url.trim(),
+      metadata: {
+        api_key: data.api_key || metadata.api_key || null,
+        api_method: data.api_method || metadata.api_method || 'GET',
+        api_headers: data.api_headers || metadata.api_headers || null,
+      },
+    };
+  }
+
+  if (!data.source_url?.trim()) {
+    throw new BadRequestException("L'URL est obligatoire pour ce type de source");
+  }
+  if (!isValidUrl(data.source_url.trim())) {
+    throw new BadRequestException("L'URL doit être valide et commencer par http:// ou https://");
+  }
+  return { type, url: data.source_url.trim(), metadata: metadata || {} };
+}
+
 @Injectable()
 export class CollectionPlansService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private orgAccess: OrgAccessService,
+  ) {}
 
   // ── Vérification accès hypothèse ─────────────────────────────────────────
-  private async checkHypothesisAccess(hypothesisId: string, userId: string) {
+  private async loadHypothesisContext(hypothesisId: string) {
     const hypothesis = await this.prisma.projectHypothesis.findUnique({
       where: { id: hypothesisId },
       include: {
+        hypothesis_perimeters: { include: { perimeter: true } },
         axis: {
           include: {
             objective: {
               include: {
                 project: {
                   include: {
+                    perimeters: true,
                     organisation: { include: { members: true } },
                   },
                 },
@@ -41,15 +85,17 @@ export class CollectionPlansService {
       },
     });
     if (!hypothesis) throw new NotFoundException('Hypothèse introuvable');
-    const project = hypothesis.axis.objective.project;
-    if (project.owner_user_id === userId) return { hypothesis, project };
-    if (
-      project.organisation?.members.some(
-        (m) => m.user_id === userId && m.statut === 'ACTIF',
-      )
-    )
-      return { hypothesis, project };
-    throw new ForbiddenException('Accès refusé');
+    return { hypothesis, project: hypothesis.axis.objective.project };
+  }
+
+  private async checkHypothesisAccess(hypothesisId: string, userId: string, write = false) {
+    const { hypothesis, project } = await this.loadHypothesisContext(hypothesisId);
+    if (write) {
+      await this.orgAccess.assertProjectWrite(project.id, userId);
+    } else {
+      await this.orgAccess.assertProjectRead(project.id, userId);
+    }
+    return { hypothesis, project };
   }
 
   // ── Helper : comparaison date sans heure ──────────────────────────────────
@@ -62,7 +108,7 @@ export class CollectionPlansService {
   // ════════════════════════════════════════════════════════════════════════════
 
   async createCollectionPlan(hypothesisId: string, userId: string, data: any) {
-    const { project } = await this.checkHypothesisAccess(hypothesisId, userId);
+    const { project } = await this.checkHypothesisAccess(hypothesisId, userId, true);
 
     if (!data.question) throw new BadRequestException('La question est obligatoire');
     if (!data.frequency) throw new BadRequestException('La fréquence est obligatoire');
@@ -148,7 +194,7 @@ export class CollectionPlansService {
     });
 
     if (!plan) throw new NotFoundException('Plan de collecte introuvable');
-    await this.checkHypothesisAccess(plan.hypothesis_id, userId);
+    await this.checkHypothesisAccess(plan.hypothesis_id, userId, true);
 
     const project = plan.hypothesis.axis.objective.project;
     const newStartDate = data.collection_start_date
@@ -196,7 +242,7 @@ export class CollectionPlansService {
       where: { id: planId },
     });
     if (!plan) throw new NotFoundException('Plan de collecte introuvable');
-    await this.checkHypothesisAccess(plan.hypothesis_id, userId);
+    await this.checkHypothesisAccess(plan.hypothesis_id, userId, true);
     await this.prisma.collectionPlan.delete({ where: { id: planId } });
     return { message: 'Plan de collecte supprimé' };
   }
@@ -210,23 +256,16 @@ export class CollectionPlansService {
       where: { id: planId },
     });
     if (!plan) throw new NotFoundException('Plan introuvable');
-    await this.checkHypothesisAccess(plan.hypothesis_id, userId);
+    await this.checkHypothesisAccess(plan.hypothesis_id, userId, true);
 
-    // ✅ CORRECTION #2 : Validation URL obligatoire
-    if (!data.source_url || data.source_url.trim() === '') {
-      throw new BadRequestException("L'URL de la source est obligatoire");
-    }
-    if (!isValidUrl(data.source_url.trim())) {
-      throw new BadRequestException(
-        "L'URL doit être valide et commencer par http:// ou https://",
-      );
-    }
+    const validated = validateSourcePayload(data);
 
     return this.prisma.collectionPlanSource.create({
       data: {
-        source_type: data.source_type || 'RSS',
-        source_label: data.source_label || data.source_url.trim(),
-        source_url: data.source_url.trim(),
+        source_type: validated.type,
+        source_label: data.source_label?.trim() || validated.url || 'Document',
+        source_url: validated.url,
+        metadata: validated.metadata,
         collection_plan_id: planId,
       },
     });
@@ -239,7 +278,7 @@ export class CollectionPlansService {
       where: { id: planId },
     });
     if (!plan) throw new NotFoundException('Plan introuvable');
-    await this.checkHypothesisAccess(plan.hypothesis_id, userId);
+    await this.checkHypothesisAccess(plan.hypothesis_id, userId, true);
 
     // Vérifier que la source existe et appartient au plan
     const source = await this.prisma.collectionPlanSource.findUnique({
@@ -252,26 +291,20 @@ export class CollectionPlansService {
       );
     }
 
-    // Validation URL si elle change
-    if (data.source_url !== undefined) {
-      if (!data.source_url || data.source_url.trim() === '') {
-        throw new BadRequestException("L'URL ne peut pas être vide");
-      }
-      if (!isValidUrl(data.source_url.trim())) {
-        throw new BadRequestException(
-          "L'URL doit être valide et commencer par http:// ou https://",
-        );
-      }
-    }
+    const merged = {
+      ...source,
+      ...data,
+      source_type: data.source_type ?? source.source_type,
+    };
+    const validated = validateSourcePayload(merged);
 
     const updated = await this.prisma.collectionPlanSource.update({
       where: { id: sourceId },
       data: {
-        source_type: data.source_type ?? source.source_type,
+        source_type: validated.type,
         source_label: data.source_label ?? source.source_label,
-        source_url: data.source_url
-          ? data.source_url.trim()
-          : source.source_url,
+        source_url: validated.url,
+        metadata: validated.metadata,
       },
     });
 
@@ -295,7 +328,7 @@ export class CollectionPlansService {
       where: { id: source.collection_plan_id },
     });
     if (plan) {
-      await this.checkHypothesisAccess(plan.hypothesis_id, userId);
+      await this.checkHypothesisAccess(plan.hypothesis_id, userId, true);
     }
 
     await this.prisma.collectionPlanSource.delete({ where: { id: sourceId } });
@@ -311,7 +344,7 @@ export class CollectionPlansService {
       where: { id: planId },
     });
     if (!plan) throw new NotFoundException('Plan introuvable');
-    await this.checkHypothesisAccess(plan.hypothesis_id, userId);
+    await this.checkHypothesisAccess(plan.hypothesis_id, userId, true);
 
     if (!data.keyword || data.keyword.trim() === '') {
       throw new BadRequestException('Le mot-clé est obligatoire');
@@ -337,7 +370,7 @@ export class CollectionPlansService {
       where: { id: keyword.collection_plan_id },
     });
     if (plan) {
-      await this.checkHypothesisAccess(plan.hypothesis_id, userId);
+      await this.checkHypothesisAccess(plan.hypothesis_id, userId, true);
     }
 
     await this.prisma.collectionPlanKeyword.delete({ where: { id: keywordId } });

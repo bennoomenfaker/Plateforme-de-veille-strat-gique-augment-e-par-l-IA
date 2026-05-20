@@ -1,29 +1,22 @@
 import { Injectable, ForbiddenException, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { OrgAccessService } from '../common/org-access.service';
 
 @Injectable()
 export class ProjectsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private orgAccess: OrgAccessService,
+  ) {}
 
-  /**
-   * Vérifie si l'utilisateur a le droit d'accéder ou modifier le projet
-   */
   private async checkAccess(projectId: string, userId: string) {
-    const project = await this.prisma.project.findUnique({
-      where: { id: projectId },
-      include: { organisation: { include: { members: true } } },
-    });
-    if (!project) throw new NotFoundException('Projet introuvable');
-    
-    // Propriétaire direct
-    if (project.owner_user_id === userId) return project;
-    
-    // Membre de l'organisation avec statut actif
-    if (project.organisation?.members.some(m => m.user_id === userId && m.statut === 'ACTIF')) {
-      return project;
-    }
-    
-    throw new ForbiddenException('Accès refusé à ce projet');
+    const { project } = await this.orgAccess.assertProjectRead(projectId, userId);
+    return project;
+  }
+
+  private async checkWriteAccess(projectId: string, userId: string) {
+    const { project } = await this.orgAccess.assertProjectWrite(projectId, userId);
+    return project;
   }
 
   /**
@@ -55,15 +48,10 @@ export class ProjectsService {
    * Création d'un projet d'organisation
    */
   async createOrgProject(data: any, userId: string, organisationId: string) {
-    const membre = await this.prisma.membreOrganisation.findFirst({
-      where: { 
-        organisation_id: organisationId, 
-        user_id: userId, 
-        role: { in: ['PROPRIETAIRE', 'MANAGER'] }, 
-        statut: 'ACTIF' 
-      },
-    });
-    if (!membre) throw new ForbiddenException('Accès insuffisant pour créer un projet d\'organisation');
+    const role = await this.orgAccess.getOrgMemberRole(organisationId, userId);
+    if (!this.orgAccess.canWrite(role)) {
+      throw new ForbiddenException('Accès insuffisant pour créer un projet d\'organisation');
+    }
 
     if (data.end_date) {
       throw new BadRequestException('La date de clôture ne peut pas être définie à la création.');
@@ -210,7 +198,7 @@ export class ProjectsService {
   /**
    * Mise à jour    */
   async updateProject(id: string, userId: string, data: any) {
-    const project = await this.checkAccess(id, userId);
+    const project = await this.checkWriteAccess(id, userId);
 
     if (data.end_date) {
       const newEndDate = new Date(data.end_date);
@@ -240,7 +228,7 @@ export class ProjectsService {
    * Clôture formelle 
    */
   async closeProject(id: string, userId: string) {
-    await this.checkAccess(id, userId);
+    await this.checkWriteAccess(id, userId);
     const closed = await this.prisma.project.update({
       where: { id },
       data: { 
@@ -256,7 +244,7 @@ export class ProjectsService {
    * Archive un projet sans le supprimer
    */
   async archiveProject(id: string, userId: string) {
-    await this.checkAccess(id, userId);
+    await this.checkWriteAccess(id, userId);
     const archived = await this.prisma.project.update({
       where: { id },
       data: { isActive: false },
@@ -269,7 +257,7 @@ export class ProjectsService {
    * Soft Delete 
    */
   async deleteProject(id: string, userId: string) {
-    await this.checkAccess(id, userId);
+    await this.checkWriteAccess(id, userId);
     await this.prisma.project.update({ 
       where: { id }, 
       data: { 

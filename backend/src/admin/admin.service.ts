@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -85,7 +85,34 @@ export class AdminService {
     return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
-  // ✅ méthode deleteUser — était manquante ou mal déclarée
+  async updateUser(userId: string, data: { nom?: string; email?: string; statut?: string; type_utilisateur?: string }) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('Utilisateur introuvable');
+
+    const updated = await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        ...(data.nom !== undefined ? { nom: data.nom } : {}),
+        ...(data.email !== undefined ? { email: data.email } : {}),
+        ...(data.statut !== undefined ? { statut: data.statut as any } : {}),
+        ...(data.type_utilisateur !== undefined ? { type_utilisateur: data.type_utilisateur as any } : {}),
+      },
+      select: {
+        id: true,
+        nom: true,
+        email: true,
+        type_utilisateur: true,
+        statut: true,
+        created_at: true,
+      },
+    });
+    return updated;
+  }
+
+  async suspendUser(userId: string) {
+    return this.updateUser(userId, { statut: 'SUSPENDU' });
+  }
+
   async deleteUser(userId: string) {
     await this.prisma.user.delete({ where: { id: userId } });
     return { message: 'Utilisateur supprimé' };
@@ -107,6 +134,58 @@ export class AdminService {
       this.prisma.organisation.count(),
     ]);
     return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
+  }
+
+  async getOrganisation(orgId: string) {
+    const org = await this.prisma.organisation.findUnique({
+      where: { id: orgId },
+      include: {
+        owner: { select: { id: true, nom: true, email: true } },
+        members: {
+          include: { user: { select: { id: true, nom: true, email: true, statut: true } } },
+        },
+        _count: { select: { projects: true } },
+      },
+    });
+    if (!org) throw new NotFoundException('Organisation introuvable');
+    return org;
+  }
+
+  async updateOrganisation(orgId: string, data: { nom?: string }) {
+    const org = await this.prisma.organisation.findUnique({ where: { id: orgId } });
+    if (!org) throw new NotFoundException('Organisation introuvable');
+    return this.prisma.organisation.update({
+      where: { id: orgId },
+      data: { ...(data.nom !== undefined ? { nom: data.nom.trim() } : {}) },
+    });
+  }
+
+  async updateOrganisationMemberRole(orgId: string, memberUserId: string, role: string) {
+    if (role === 'PROPRIETAIRE') {
+      throw new BadRequestException('Impossible d\'assigner le rôle propriétaire via cette action');
+    }
+    const membre = await this.prisma.membreOrganisation.findFirst({
+      where: { organisation_id: orgId, user_id: memberUserId },
+    });
+    if (!membre) throw new NotFoundException('Membre introuvable');
+    return this.prisma.membreOrganisation.update({
+      where: { id: membre.id },
+      data: { role: role as any },
+    });
+  }
+
+  async removeOrganisationMember(orgId: string, memberUserId: string) {
+    const org = await this.prisma.organisation.findUnique({ where: { id: orgId } });
+    if (!org) throw new NotFoundException('Organisation introuvable');
+    if (org.owner_id === memberUserId) {
+      throw new NotFoundException('Impossible de supprimer le propriétaire');
+    }
+    const membre = await this.prisma.membreOrganisation.findFirst({
+      where: { organisation_id: orgId, user_id: memberUserId },
+    });
+    if (!membre) throw new NotFoundException('Membre introuvable');
+    await this.prisma.membreOrganisation.delete({ where: { id: membre.id } });
+    return { message: 'Membre retiré' };
   }
 
   async deleteOrganisation(orgId: string) {

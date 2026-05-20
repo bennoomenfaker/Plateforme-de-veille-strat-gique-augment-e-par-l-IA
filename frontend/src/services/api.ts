@@ -1,5 +1,26 @@
 import axios from 'axios';
 
+/** Message d'erreur lisible (réseau, validation Nest, etc.) */
+export function formatApiError(err: unknown, fallback: string): string {
+  if (!axios.isAxiosError(err)) {
+    return fallback;
+  }
+  if (!err.response) {
+    if (err.code === 'ERR_NETWORK' || err.message?.includes('Network')) {
+      return "Impossible de joindre l'API. Démarrez le backend (port 3000) puis relancez le frontend.";
+    }
+    return err.message || fallback;
+  }
+  const data = err.response.data as { message?: string | string[] } | undefined;
+  const msg = data?.message;
+  if (Array.isArray(msg)) return msg.join(', ');
+  if (typeof msg === 'string' && msg.trim()) return msg;
+  if (err.response.status >= 500) {
+    return 'Erreur serveur. Vérifiez les logs du backend et que la base de données est migrée.';
+  }
+  return fallback;
+}
+
 const api = axios.create({
   baseURL: '/api',
 });
@@ -47,6 +68,13 @@ export const authService = {
   me: () => api.get('/auth/me'),
   updateProfile: (data: any) => api.patch('/auth/profile', data),
   changePassword: (data: any) => api.patch('/auth/change-password', data),
+  uploadAvatar: (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post('/auth/profile/avatar', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
 };
 
 // --- 2. PROJECTS ---
@@ -62,13 +90,15 @@ export const projectsService = {
 // --- 3. ORGANISATIONS ---
 export const orgService = {
   getMyOrg: () => api.get('/organisations/me'),
-  getMembers: (orgId: string) => api.get(`/organisations/${orgId}/members`),
+  getMembers: (orgId: string) => api.get(`/organisations/${orgId}/membres`),
   inviteMember: (orgId: string, data: any) =>
     api.post(`/organisations/${orgId}/invite`, data),
   removeMember: (orgId: string, memberId: string) =>
-    api.delete(`/organisations/${orgId}/members/${memberId}`),
+    api.delete(`/organisations/${orgId}/membres/${memberId}`),
   updateMemberRole: (orgId: string, memberId: string, role: string) =>
-    api.patch(`/organisations/${orgId}/members/${memberId}`, { role }),
+    api.patch(`/organisations/${orgId}/membres/${memberId}/role`, { role }),
+  regenerateJoinCodes: (orgId: string) =>
+    api.post(`/organisations/${orgId}/regenerate-codes`),
 };
 
 // --- 4. SOURCES ---
@@ -266,9 +296,24 @@ export const alertsService = {
 
 // --- 13. ADMIN ---
 export const adminService = {
-  getStats: () => api.get('/admin/stats'),
-  getUsers: () => api.get('/admin/users'),
+  getDashboard: () => api.get('/admin/dashboard'),
+  getUsers: (page = 1, limit = 20) =>
+    api.get('/admin/users', { params: { page, limit } }),
+  updateUser: (id: string, data: any) => api.patch(`/admin/users/${id}`, data),
   suspendUser: (id: string) => api.patch(`/admin/users/${id}/suspend`),
+  deleteUser: (id: string) => api.delete(`/admin/users/${id}`),
+  getOrganisations: (page = 1, limit = 20) =>
+    api.get('/admin/organisations', { params: { page, limit } }),
+  getOrganisation: (id: string) => api.get(`/admin/organisations/${id}`),
+  updateOrganisation: (id: string, data: any) =>
+    api.patch(`/admin/organisations/${id}`, data),
+  deleteOrganisation: (id: string) => api.delete(`/admin/organisations/${id}`),
+  updateOrgMemberRole: (orgId: string, memberId: string, role: string) =>
+    api.patch(`/admin/organisations/${orgId}/members/${memberId}/role`, { role }),
+  removeOrgMember: (orgId: string, memberId: string) =>
+    api.delete(`/admin/organisations/${orgId}/members/${memberId}`),
+  getLogs: () => api.get('/admin/logs'),
+  getPipeline: () => api.get('/admin/pipeline'),
 };
 
 // --- 14. FOLDERS ---

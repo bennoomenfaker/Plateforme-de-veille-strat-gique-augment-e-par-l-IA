@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import api from '../../services/api';
+import api, { formatApiError } from '../../services/api';
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -18,11 +18,14 @@ export default function LoginPage() {
       const res = await api.post('/auth/login', form);
       login(res.data.access_token, res.data.refresh_token, res.data.user);
       navigate('/home');
-    } catch (err: any) {
-      const msg = err.response?.data?.message;
+    } catch (err: unknown) {
+      const msg =
+        err && typeof err === 'object' && 'response' in err
+          ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
+          : undefined;
       if (msg === 'Compte suspendu') setError('Votre compte a été suspendu');
       else if (msg === 'Compte inactif') setError('Votre compte est inactif');
-      else setError('Email ou mot de passe incorrect');
+      else setError(formatApiError(err, 'Email ou mot de passe incorrect'));
     } finally {
       setLoading(false);
     }
