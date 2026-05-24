@@ -25,6 +25,7 @@ export default function ProjectProcessedItemsPage() {
   const [langFilter, setLangFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [selectedItem, setSelectedItem] = useState<any | null>(null);
+  const [notification, setNotification] = useState<{type:'success'|'error'; msg:string}|null>(null);
   const limit = 20;
 
   // Stats
@@ -50,10 +51,12 @@ export default function ProjectProcessedItemsPage() {
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['processed-items', projectId] });
       queryClient.invalidateQueries({ queryKey: ['processing-stats', projectId] });
-      alert(`✅ Processing terminé !\n${res.data.processed} traités · ${res.data.skipped} ignorés · ${res.data.failed} erreurs`);
+      setNotification({type:'success', msg:`Processing terminé : ${res.data.processed} traités · ${res.data.skipped} ignorés · ${res.data.failed} erreurs`});
+      setTimeout(() => setNotification(null), 5000);
     },
     onError: (err: any) => {
-      alert(`❌ Erreur: ${err?.response?.data?.message || err.message}`);
+      setNotification({type:'error', msg:`Erreur : ${err?.response?.data?.message || err.message}`});
+      setTimeout(() => setNotification(null), 5000);
     },
   });
 
@@ -77,6 +80,16 @@ export default function ProjectProcessedItemsPage() {
   return (
     <Layout>
       <div className="p-8 max-w-6xl mx-auto">
+
+        {/* Notification */}
+        {notification && (
+          <div className="mb-4 px-4 py-3 rounded-xl text-sm font-medium"
+            style={notification.type === 'success'
+              ? {background:'rgba(16,185,129,0.1)', color:'#34d399', border:'1px solid rgba(16,185,129,0.2)'}
+              : {background:'rgba(239,68,68,0.1)', color:'#f87171', border:'1px solid rgba(239,68,68,0.2)'}}>
+            {notification.msg}
+          </div>
+        )}
 
         {/* Breadcrumb */}
         <div className="flex items-center gap-2 mb-6 text-xs" style={{ color: '#6b7280' }}>
@@ -106,7 +119,7 @@ export default function ProjectProcessedItemsPage() {
               color: processMutation.isPending ? '#6b7280' : 'white',
               cursor: processMutation.isPending ? 'not-allowed' : 'pointer',
             }}>
-            {processMutation.isPending ? '⏳ Processing...' : '▶ Lancer le processing'}
+            {processMutation.isPending ? 'Processing en cours...' : 'Lancer le processing'}
           </button>
         </div>
 

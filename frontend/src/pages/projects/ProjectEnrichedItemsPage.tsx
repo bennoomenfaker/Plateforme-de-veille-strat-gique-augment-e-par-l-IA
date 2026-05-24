@@ -87,7 +87,7 @@ function EnrichedItemModal({ item, onClose }: { item: EnrichedItem; onClose: () 
                    borderRadius: '1.25rem 1.25rem 0 0' }}>
           <div className="flex-1 pr-4">
             <p className="text-xs font-bold uppercase tracking-widest mb-1"
-              style={{ color: 'rgba(255,255,255,0.5)' }}>Insight IA — Sprint 5</p>
+              style={{ color: 'rgba(255,255,255,0.5)' }}>Insight IA</p>
             <h2 className="text-base font-bold text-white leading-snug">
               {item.processed_item?.title ?? 'Sans titre'}
             </h2>
@@ -110,7 +110,7 @@ function EnrichedItemModal({ item, onClose }: { item: EnrichedItem; onClose: () 
               <span className="text-[10px] px-2.5 py-0.5 rounded-full"
                 style={{ background: 'rgba(99,102,241,0.1)', color: '#a5b4fc',
                          border: '1px solid rgba(99,102,241,0.2)' }}>
-                🤖 {item.model_used}
+                {item.model_used}
               </span>
             )}
           </div>
@@ -129,7 +129,7 @@ function EnrichedItemModal({ item, onClose }: { item: EnrichedItem; onClose: () 
           {item.summary && (
             <div>
               <p className="text-xs font-bold uppercase tracking-widest mb-2"
-                style={{ color: '#6b7280' }}>📝 Résumé automatique</p>
+                style={{ color: '#6b7280' }}>Résumé automatique</p>
               <div style={{ background: '#0f1117', borderRadius: '0.75rem', padding: '1rem' }}>
                 <p className="text-sm leading-relaxed" style={{ color: '#d1d5db' }}>{item.summary}</p>
               </div>
@@ -140,7 +140,7 @@ function EnrichedItemModal({ item, onClose }: { item: EnrichedItem; onClose: () 
           {item.answer && (
             <div>
               <p className="text-xs font-bold uppercase tracking-widest mb-2"
-                style={{ color: '#6b7280' }}>💬 Réponse au plan de collecte</p>
+                style={{ color: '#6b7280' }}>Réponse au plan de collecte</p>
               <div style={{ background: 'rgba(99,102,241,0.05)',
                             border: '1px solid rgba(99,102,241,0.2)',
                             borderRadius: '0.75rem', padding: '1rem' }}>
@@ -155,7 +155,7 @@ function EnrichedItemModal({ item, onClose }: { item: EnrichedItem; onClose: () 
               {entities.length > 0 && (
                 <div>
                   <p className="text-xs font-bold uppercase tracking-widest mb-2"
-                    style={{ color: '#6b7280' }}>🏢 Entités</p>
+                    style={{ color: '#6b7280' }}>Entités</p>
                   <div className="flex flex-wrap gap-1.5">
                     {entities.slice(0, 10).map((e, i) => (
                       <span key={i} className="text-xs px-2 py-0.5 rounded-lg"
@@ -170,7 +170,7 @@ function EnrichedItemModal({ item, onClose }: { item: EnrichedItem; onClose: () 
               {topics.length > 0 && (
                 <div>
                   <p className="text-xs font-bold uppercase tracking-widest mb-2"
-                    style={{ color: '#6b7280' }}>🏷️ Thèmes</p>
+                    style={{ color: '#6b7280' }}>Thèmes</p>
                   <div className="flex flex-wrap gap-1.5">
                     {topics.slice(0, 10).map((t, i) => (
                       <span key={i} className="text-xs px-2 py-0.5 rounded-lg"
@@ -209,6 +209,7 @@ export default function ProjectEnrichedItemsPage() {
   const queryClient = useQueryClient();
 
   const [page, setPage]           = useState(1);
+  const [notification, setNotification] = useState<{type:'success'|'error'; msg:string}|null>(null);
   const [impactFilter, setImpact] = useState('');
   const [selectedItem, setSelected] = useState<EnrichedItem | null>(null);
   const LIMIT = 20;
@@ -246,10 +247,11 @@ export default function ProjectEnrichedItemsPage() {
         queryClient.invalidateQueries({ queryKey: ['ai-stats',          projectId] }),
       ]);
       const d = res.data;
-      alert(`✅ Enrichissement IA lancé !\n${d.processed ?? 0} traités · ${d.skipped ?? 0} ignorés · ${d.failed ?? 0} erreurs`);
+      alert(`Enrichissement terminé !\n${d.processed ?? 0} traités · ${d.skipped ?? 0} ignorés · ${d.failed ?? 0} erreurs`);
     },
     onError: (err: any) => {
-      alert(`❌ Erreur: ${err?.response?.data?.message || err.message}`);
+      setNotification({type:'error', msg:`Erreur : ${err?.response?.data?.message || err.message}`});
+      setTimeout(() => setNotification(null), 5000);
     },
   });
 
@@ -267,6 +269,16 @@ export default function ProjectEnrichedItemsPage() {
   return (
     <Layout>
       <div className="p-8 max-w-6xl mx-auto">
+
+        {/* Notification */}
+        {notification && (
+          <div className="mb-4 px-4 py-3 rounded-xl text-sm font-medium"
+            style={notification.type === 'success'
+              ? {background:'rgba(16,185,129,0.1)', color:'#34d399', border:'1px solid rgba(16,185,129,0.2)'}
+              : {background:'rgba(239,68,68,0.1)', color:'#f87171', border:'1px solid rgba(239,68,68,0.2)'}}>
+            {notification.msg}
+          </div>
+        )}
 
         {/* Breadcrumb */}
         <div className="mb-1">
@@ -308,7 +320,7 @@ export default function ProjectEnrichedItemsPage() {
                 color:  isRunning ? '#6b7280' : 'white',
                 cursor: isRunning ? 'not-allowed' : 'pointer',
               }}>
-              {isRunning ? '⏳ Analyse...' : '🧠 Lancer l\'enrichissement IA'}
+              {isRunning ? 'Analyse en cours...' : '🧠 Lancer l\'enrichissement IA'}
             </button>
           </div>
         </div>
@@ -410,7 +422,7 @@ export default function ProjectEnrichedItemsPage() {
                   disabled={isRunning}
                   className="text-sm font-semibold px-5 py-2 rounded-xl text-white"
                   style={{ background: 'linear-gradient(135deg,#7c3aed,#a78bfa)' }}>
-                  🧠 Lancer l'enrichissement IA
+                  Lancer l'enrichissement IA
                 </button>
               )}
             </div>

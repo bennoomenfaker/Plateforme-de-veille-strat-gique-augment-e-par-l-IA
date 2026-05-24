@@ -8,100 +8,102 @@ export class AlertesService {
 
   constructor(private prisma: PrismaService) {}
 
-  // ─── CRON : toutes les heures ────────────────────────────────────────────────
   @Cron(CronExpression.EVERY_HOUR)
   async handleScheduledAlerts() {
     this.logger.log('Verification automatique des alertes...');
     await this.checkAllAlerts();
   }
 
-  // ─── Vérifier toutes les alertes ─────────────────────────────────────────────
   async checkAllAlerts(): Promise<{ created: number }> {
     const projects = await this.prisma.project.findMany({
-      where: { isActive: true },
-      include: {
-        sources: true,
-        alerts: true,
-      },
+      where: { isActive: true, is_deleted: false },
+      select: { id: true, nom: true, owner_user_id: true, organisation_id: true },
     });
 
     let created = 0;
-
     for (const project of projects) {
       const count = await this.checkProjectAlerts(project);
       created += count;
     }
-
-    this.logger.log(`Alertes creees: ${created}`);
+    this.logger.log(`Alertes créées: ${created}`);
     return { created };
   }
 
-  // ─── Vérifier les alertes d'un projet ────────────────────────────────────────
-  private async checkProjectAlerts(project: any): Promise<number> {
-    const keywords = project.keywords as string[];
-    if (!keywords || keywords.length === 0) return 0;
+  private async getProjectUserId(project: any): Promise<string | null> {
+    if (project.owner_user_id) return project.owner_user_id;
+    if (project.organisation_id) {
+      const owner = await this.prisma.membreOrganisation.findFirst({
+        where: { organisation_id: project.organisation_id, role: 'PROPRIETAIRE', statut: 'ACTIF' },
+        select: { user_id: true },
+      });
+      return owner?.user_id ?? null;
+    }
+    return null;
+  }
 
-    // Récupérer les WatchResults récents non alertés
-    const recentResults = await this.prisma.watchResult.findMany({
-      where: {
-        projectId: project.id,
-        createdAt: { gte: new Date(Date.now() - 24 * 3600000) },
-      },
+  private async checkProjectAlerts(project: any): Promise<number> {
+    const userId = await this.getProjectUserId(project);
+    if (!userId) return 0;
+
+    const since = new Date(Date.now() - 24 * 3600000);
+    const recentItems = await this.prisma.enrichedItem.findMany({
+      where: { project_id: project.id, enriched_at: { gte: since } },
     });
 
     let created = 0;
 
-    for (const result of recentResults) {
-      // Alerte si sentiment négatif
-      if (result.sentiment === 'NEGATIF') {
-        const existing = await this.prisma.alert.findFirst({
-          where: {
-            projectId: project.id,
-            message: { contains: result.id },
-          },
+    for (const item of recentItems) {
+      // Alerte score élevé (>= 0.8)
+      if ((item.relevance_score ?? 0) >= 0.8) {
+        const key = `high_score:${item.id}`;
+        const exists = await this.prisma.alert.findFirst({
+          where: { projectId: project.id, message: { contains: key } },
         });
-
-        if (!existing) {
-          const userId = project.owner_user_id;
-          if (userId) {
-            await this.prisma.alert.create({
-              data: {
-                message: `Sentiment negatif detecte: "${result.title}" [${result.id}]`,
-                projectId: project.id,
-                userId,
-              },
-            });
-            created++;
-          }
+        if (!exists) {
+          await this.prisma.alert.create({
+            data: {
+              message: `Score élevé (${Math.round((item.relevance_score ?? 0) * 100)}%) détecté [${key}]`,
+              projectId: project.id,
+              userId,
+            },
+          });
+          created++;
         }
       }
 
-      // Alerte si mot-clé critique trouvé
-      const resultKeywords = result.keywords as string[] || [];
-      const criticalMatch = keywords.some(kw =>
-        resultKeywords.some(rk => rk.toLowerCase().includes(kw.toLowerCase()))
-      );
-
-      if (criticalMatch) {
-        const existing = await this.prisma.alert.findFirst({
-          where: {
-            projectId: project.id,
-            message: { contains: `keyword:${result.id}` },
-          },
+      // Alerte hypothèse contredite
+      if (item.hypothesis_impact === 'CONTRADICTED') {
+        const key = `contradicted:${item.id}`;
+        const exists = await this.prisma.alert.findFirst({
+          where: { projectId: project.id, message: { contains: key } },
         });
+        if (!exists) {
+          await this.prisma.alert.create({
+            data: {
+              message: `Hypothèse contredite détectée dans un article récent [${key}]`,
+              projectId: project.id,
+              userId,
+            },
+          });
+          created++;
+        }
+      }
 
-        if (!existing) {
-          const userId = project.owner_user_id;
-          if (userId) {
-            await this.prisma.alert.create({
-              data: {
-                message: `Mot-cle detecte dans: "${result.title}" [keyword:${result.id}]`,
-                projectId: project.id,
-                userId,
-              },
-            });
-            created++;
-          }
+      // Alerte nouveau contenu pertinent (>= 0.6)
+      if ((item.relevance_score ?? 0) >= 0.6 && item.hypothesis_impact === 'SUPPORTED') {
+        const key = `relevant:${item.id}`;
+        const exists = await this.prisma.alert.findFirst({
+          where: { projectId: project.id, message: { contains: key } },
+        });
+        if (!exists) {
+          await this.prisma.alert.create({
+            data: {
+              message: `Nouveau contenu pertinent supportant une hypothèse [${key}]`,
+              projectId: project.id,
+              userId,
+            },
+          });
+          created++;
         }
       }
     }
@@ -109,26 +111,19 @@ export class AlertesService {
     return created;
   }
 
-  // ─── Créer une alerte manuelle ────────────────────────────────────────────────
   async createAlert(data: any, userId: string) {
     return this.prisma.alert.create({
-      data: {
-        message: data.message,
-        projectId: data.projectId,
-        userId,
-      },
+      data: { message: data.message, projectId: data.projectId, userId },
     });
   }
 
-  // ─── Récupérer mes alertes ────────────────────────────────────────────────────
   async getMyAlerts(userId: string, page = 1, limit = 20) {
     const skip = (page - 1) * limit;
     const [data, total] = await Promise.all([
       this.prisma.alert.findMany({
         where: { userId },
         orderBy: { createdAt: 'desc' },
-        skip,
-        take: limit,
+        skip, take: limit,
         include: { project: { select: { nom: true } } },
       }),
       this.prisma.alert.count({ where: { userId } }),
@@ -136,7 +131,6 @@ export class AlertesService {
     return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
-  // ─── Récupérer alertes d'un projet ───────────────────────────────────────────
   async getProjectAlerts(projectId: string, userId: string) {
     return this.prisma.alert.findMany({
       where: { projectId, userId },
@@ -144,7 +138,6 @@ export class AlertesService {
     });
   }
 
-  // ─── Marquer comme lu ────────────────────────────────────────────────────────
   async markAsRead(alertId: string, userId: string) {
     return this.prisma.alert.update({
       where: { id: alertId },
@@ -152,22 +145,19 @@ export class AlertesService {
     });
   }
 
-  // ─── Marquer toutes comme lues ───────────────────────────────────────────────
   async markAllAsRead(userId: string) {
     await this.prisma.alert.updateMany({
       where: { userId, isRead: false },
       data: { isRead: true },
     });
-    return { message: 'Toutes les alertes marquees comme lues' };
+    return { message: 'Toutes les alertes marquées comme lues' };
   }
 
-  // ─── Supprimer une alerte ────────────────────────────────────────────────────
   async deleteAlert(alertId: string, userId: string) {
     await this.prisma.alert.delete({ where: { id: alertId } });
-    return { message: 'Alerte supprimee' };
+    return { message: 'Alerte supprimée' };
   }
 
-  // ─── Compter alertes non lues ─────────────────────────────────────────────────
   async countUnread(userId: string) {
     const count = await this.prisma.alert.count({
       where: { userId, isRead: false },

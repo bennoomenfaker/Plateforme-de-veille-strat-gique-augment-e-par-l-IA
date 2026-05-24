@@ -92,7 +92,7 @@ export class AuthController {
       limits: { fileSize: 5 * 1024 * 1024 },
     }),
   )
-  async uploadAvatar(@Request() req: any, @UploadedFile() file: Express.Multer.File) {
+  async uploadAvatar(@Request() req: any, @UploadedFile() file: any) {
     if (!file) throw new BadRequestException('Fichier requis');
     const photo_url = `/uploads/avatars/${file.filename}`;
     return this.authService.updateProfile(req.user.userId, { photo_url });

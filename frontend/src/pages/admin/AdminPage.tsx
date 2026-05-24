@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import api, { adminService } from '../../services/api';
+import api from '../../services/api';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 type Tab = 'dashboard' | 'users' | 'organisations' | 'logs' | 'pipeline';

@@ -15,7 +15,6 @@ export class SchedulerService {
   @Cron(CronExpression.EVERY_HOUR)
   async handleCron() {
     this.logger.log('Verification des plans de collecte...');
-
     const now = new Date();
 
     const plansToExecute = await this.prisma.collectionPlan.findMany({
@@ -31,7 +30,13 @@ export class SchedulerService {
               include: {
                 objective: {
                   include: {
-                    project: true,
+                    project: {
+                      include: {
+                        organisation: {
+                          include: { members: { where: { role: 'PROPRIETAIRE', statut: 'ACTIF' } } }
+                        }
+                      }
+                    },
                   },
                 },
               },
@@ -51,22 +56,20 @@ export class SchedulerService {
     for (const plan of plansToExecute) {
       try {
         const project = plan.hypothesis.axis.objective.project;
-        const ownerId = project.owner_user_id;
+
+        // Chercher un userId valide : owner direct ou propriétaire de l'org
+        let ownerId = project.owner_user_id;
+        if (!ownerId && project.organisation?.members?.length > 0) {
+          ownerId = project.organisation.members[0].user_id;
+        }
 
         if (!ownerId) {
-          this.logger.warn(`Plan ${plan.id} ignore : pas de owner_user_id`);
+          this.logger.warn(`Plan ${plan.id} ignore : aucun owner trouvé`);
           continue;
         }
 
         this.logger.log(`Lancement collecte plan: ${plan.id}`);
-
-        // ✅ CORRECTION 4 : passer SCHEDULED comme trigger_type
-        await this.collectionManager.runCollectionPlan(
-          plan.id,
-          ownerId,
-          'SCHEDULED', // trigger_type correct
-        );
-
+        await this.collectionManager.runCollectionPlan(plan.id, ownerId, 'SCHEDULED');
       } catch (error) {
         this.logger.error(`Erreur plan ${plan.id}: ${error.message}`);
       }

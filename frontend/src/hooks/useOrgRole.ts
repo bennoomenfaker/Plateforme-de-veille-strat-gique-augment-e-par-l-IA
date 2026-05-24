@@ -1,17 +1,17 @@
-import { useAuth } from '../context/AuthContext';
+import { useQuery } from '@tanstack/react-query';
+import { orgService } from '../services/api';
 
 export function useOrgRole() {
-  const { user, isOrganisation } = useAuth();
-  const membership = user?.memberships?.[0];
-  const role = membership?.role;
+  const { data: org } = useQuery({
+    queryKey: ['organisation'],
+    queryFn: () => orgService.getMyOrg().then(r => r.data),
+    staleTime: 5 * 60 * 1000,
+  });
 
-  const isOwner = role === 'PROPRIETAIRE';
-  const isReader = role === 'LECTEUR';
-  const canWrite =
-    !isOrganisation ||
-    role === 'PROPRIETAIRE' ||
-    role === 'MANAGER' ||
-    role === 'EQUIPE_VEILLE';
+  const role = org?.my_role ?? null;
 
-  return { role, isOwner, isReader, canWrite, membership };
+  const canWrite = role === 'PROPRIETAIRE' || role === 'MANAGER' || role === 'EQUIPE_VEILLE';
+  const canRead = !!role;
+
+  return { role, canWrite, canRead };
 }

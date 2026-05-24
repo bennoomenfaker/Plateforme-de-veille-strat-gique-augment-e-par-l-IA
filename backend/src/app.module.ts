@@ -23,6 +23,7 @@ import { CollectionEngineModule } from './collection-engine/collection-engine.mo
 import { UploadModule } from './upload/upload.module'; // ← AJOUTÉ
 import { ProcessingModule } from './processing/processing.module';
 import { CommonModule } from './common/common.module';
+import { ReportsModule } from './reports/reports.module';
 
 
 @Module({
@@ -49,6 +50,7 @@ import { CommonModule } from './common/common.module';
     AiEnrichmentModule,
     UploadModule,
     ProcessingModule,
+    ReportsModule,
 
   ],
   controllers: [AppController],

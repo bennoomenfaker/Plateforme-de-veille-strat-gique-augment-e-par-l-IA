@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Layout from '../../components/layout/Layout';
 import { collectionPlanService, uploadService } from '../../services/api';
-import { useOrgRole } from '../../hooks/useOrgRole';
+
 import type { CollectionJob, RawItem } from '../../types';
 
 const SOURCE_TYPE_COLORS: Record<string, { bg: string; color: string; border: string }> = {
@@ -58,7 +58,7 @@ export default function CollectionPlanDetailPage() {
   const [uploading, setUploading] = useState(false);
   const [uploadMsg, setUploadMsg] = useState('');
   const [showAddSource, setShowAddSource] = useState(false);
-  const { canWrite } = useOrgRole();
+
   const [newSource, setNewSource] = useState({
     source_type: 'RSS',
     source_label: '',

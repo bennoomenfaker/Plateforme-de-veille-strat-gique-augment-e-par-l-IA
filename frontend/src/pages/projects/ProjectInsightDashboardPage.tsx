@@ -6,7 +6,7 @@ import {
   LineChart, Line, PieChart, Pie, Cell, Legend,
 } from 'recharts';
 import Layout from '../../components/layout/Layout';
-import api, { aiEnrichmentService, processingService } from '../../services/api';
+import api, { aiEnrichmentService, processingService, reportsService } from '../../services/api';
 import type { HypothesisImpact, AiEnrichmentStats } from '../../types';
 
 const IMPACT_CFG: Record<HypothesisImpact, { label: string; color: string }> = {
@@ -155,14 +155,23 @@ export default function ProjectInsightDashboardPage() {
               className="text-sm font-semibold px-4 py-2 rounded-xl transition"
               style={{ background: 'rgba(139,92,246,0.15)', color: '#a78bfa',
                        border: '1px solid rgba(139,92,246,0.3)' }}>
-              🧠 Enrichissement IA
+              Enrichissement IA
             </Link>
             <Link to={`/projects/${projectId}/processed`}
               className="text-sm font-semibold px-4 py-2 rounded-xl transition"
               style={{ background: 'rgba(16,185,129,0.15)', color: '#34d399',
                        border: '1px solid rgba(16,185,129,0.3)' }}>
-              🧹 Données nettoyées
+              Données nettoyées
             </Link>
+            <a
+              href={reportsService.getReportUrl(projectId!)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm font-semibold px-4 py-2 rounded-xl transition"
+              style={{ background: 'rgba(251,191,36,0.15)', color: '#fbbf24',
+                       border: '1px solid rgba(251,191,36,0.3)' }}>
+              Exporter le rapport
+            </a>
           </div>
         </div>
 
@@ -341,7 +350,7 @@ export default function ProjectInsightDashboardPage() {
             {topItems.length > 0 && (
               <div style={{ ...cardStyle, overflow: 'hidden' }}>
                 <div className="px-5 py-4" style={{ borderBottom: '1px solid #1e2535' }}>
-                  <h2 className="text-sm font-bold text-white">🏆 Insights haute pertinence</h2>
+                  <h2 className="text-sm font-bold text-white">Insights haute pertinence</h2>
                 </div>
                 {topItems.map((item: any, i: number) => {
                   const cfg = IMPACT_CFG[item.hypothesis_impact as HypothesisImpact] ?? IMPACT_CFG.OPEN;
@@ -487,7 +496,7 @@ export default function ProjectInsightDashboardPage() {
                 <Link to={`/projects/${projectId}/enriched`}
                   className="inline-block text-sm font-semibold px-5 py-2 rounded-xl text-white"
                   style={{ background: 'linear-gradient(135deg,#7c3aed,#a78bfa)' }}>
-                  🧠 Enrichissement IA →
+                  Enrichissement IA →
                 </Link>
               </div>
             ) : (

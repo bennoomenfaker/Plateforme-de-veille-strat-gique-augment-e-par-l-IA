@@ -3,6 +3,8 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Layout from '../../components/layout/Layout';
 import api, { objectiveService, axisService, hypothesisService } from '../../services/api';
+import { useAuth } from '../../context/AuthContext';
+import { useOrgRole } from '../../hooks/useOrgRole';
 
 // ─── Types monitoring ─────────────────────────────────────────────────────────
 const MONITORING_TYPES = [
@@ -23,6 +25,10 @@ export default function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+
+  const { user } = useAuth();
+  const { canWrite } = useOrgRole();
+  const canCreateOrModify = user?.type_utilisateur === 'INDIVIDUEL' || canWrite;
 
   const [analysing, setAnalysing]   = useState(false);
   const [analyseMsg, setAnalyseMsg] = useState('');
@@ -180,13 +186,13 @@ export default function ProjectDetailPage() {
               {geoPerimeters.map((p: any) => (
                 <span key={p.id} className="text-[10px] px-2 py-0.5 rounded-md font-medium"
                   style={{ background: 'rgba(251,191,36,0.1)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.2)' }}>
-                  🌍 {p.name || p.value}
+                  {p.name || p.value}
                 </span>
               ))}
               {sectorPerimeters.map((p: any) => (
                 <span key={p.id} className="text-[10px] px-2 py-0.5 rounded-md font-medium"
                   style={{ background: 'rgba(167,139,250,0.1)', color: '#a78bfa', border: '1px solid rgba(167,139,250,0.2)' }}>
-                  🏢 {p.name || p.value}
+                  {p.name || p.value}
                 </span>
               ))}
             </div>
@@ -196,7 +202,7 @@ export default function ProjectDetailPage() {
           <div className="flex gap-3 items-start flex-wrap justify-end">
 
             {/* Bouton Modifier projet */}
-            <button
+            {canCreateOrModify && <button
               onClick={() => setShowEditModal(true)}
               className="text-sm font-semibold px-4 py-2 rounded-xl transition"
               style={{ border: '1px solid #1e2535', color: '#9ca3af' }}
@@ -208,7 +214,7 @@ export default function ProjectDetailPage() {
                 </svg>
                 Modifier
               </span>
-            </button>
+            </button>}
 
             {/* Nouveau projet */}
             <button
@@ -260,26 +266,28 @@ export default function ProjectDetailPage() {
         </Link>
 
         {/* Analyser */}
-            <div className="flex flex-col items-center">
-              <button
-                onClick={handleAnalyse}
-                disabled={analysing}
-                className="text-sm font-semibold px-4 py-2 rounded-xl transition"
-                style={{
-                  background: 'linear-gradient(135deg,#3b82f6,#6366f1)',
-                  color: 'white',
-                  opacity: analysing ? 0.5 : 1,
-                }}
-              >
-                {analysing ? 'Analyse...' : 'Analyser'}
-              </button>
-              {analyseMsg && (
-                <span className="text-[10px] mt-1"
-                  style={{ color: analyseMsg.includes('Erreur') ? '#f87171' : '#34d399' }}>
-                  {analyseMsg}
-                </span>
-              )}
-            </div>
+            {canCreateOrModify && (
+              <div className="flex flex-col items-center">
+                <button
+                  onClick={handleAnalyse}
+                  disabled={analysing}
+                  className="text-sm font-semibold px-4 py-2 rounded-xl transition"
+                  style={{
+                    background: 'linear-gradient(135deg,#3b82f6,#6366f1)',
+                    color: 'white',
+                    opacity: analysing ? 0.5 : 1,
+                  }}
+                >
+                  {analysing ? 'Analyse...' : 'Analyser'}
+                </button>
+                {analyseMsg && (
+                  <span className="text-[10px] mt-1"
+                    style={{ color: analyseMsg.includes('Erreur') ? '#f87171' : '#34d399' }}>
+                    {analyseMsg}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -460,7 +468,7 @@ export default function ProjectDetailPage() {
                       </span>
                       <p className="text-sm font-semibold text-white">{obj.content}</p>
                     </div>
-                    <button
+                    {canCreateOrModify && <button
                       onClick={() => window.confirm('Supprimer cet objectif ?') && deleteObjectiveMutation.mutate(obj.id)}
                       className="hover:text-red-400"
                       style={actionBtnStyle}
@@ -469,7 +477,7 @@ export default function ProjectDetailPage() {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                           d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                       </svg>
-                    </button>
+                    </button>}
                   </div>
 
                   {/* Axes */}
@@ -551,7 +559,7 @@ export default function ProjectDetailPage() {
             <div className="rounded-2xl p-4 flex items-center justify-between"
               style={{ background: '#161b27', border: '1px solid #1e2535' }}>
               <div>
-                <p className="text-sm font-semibold text-white">📦 Données brutes collectées</p>
+                <p className="text-sm font-semibold text-white">Données brutes collectées</p>
                 <p className="text-xs mt-0.5" style={{ color: '#6b7280' }}>
                   Voir tous les raw items collectés par les plans de collecte
                 </p>
@@ -567,7 +575,7 @@ export default function ProjectDetailPage() {
             <div className="rounded-2xl p-4 flex items-center justify-between"
               style={{ background: '#161b27', border: '1px solid #1e2535' }}>
               <div>
-                <p className="text-sm font-semibold text-white">🧹 Données nettoyées</p>
+                <p className="text-sm font-semibold text-white">Données nettoyées</p>
                 <p className="text-xs mt-0.5" style={{ color: '#6b7280' }}>
                   Contenu extrait, langue détectée, bruit supprimé — prêt pour l'IA
                 </p>
@@ -612,7 +620,7 @@ export default function ProjectDetailPage() {
                           {axe.hypotheses?.map((hyp: any) => (
                             <div key={hyp.id} className="ml-4 mb-2">
                               <p className="text-xs font-medium mb-2" style={{ color: '#34d399' }}>
-                                ✦ {hyp.content?.substring(0, 70)}{hyp.content?.length > 70 ? '...' : ''}
+                                {hyp.content?.substring(0, 70)}{hyp.content?.length > 70 ? '...' : ''}
                               </p>
                               {hyp.collection_plans && hyp.collection_plans.length > 0 ? (
                                 <div className="space-y-1.5 ml-4">

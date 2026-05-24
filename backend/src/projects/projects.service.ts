@@ -19,13 +19,15 @@ export class ProjectsService {
     return project;
   }
 
-  /**
-   * Création d'un projet individuel (Sprint 1.2: Dates verrouillées)
-   */
   async createProject(data: any, userId: string) {
     if (data.end_date) {
       throw new BadRequestException('La date de clôture ne peut pas être définie à la création.');
     }
+
+    // Si l'user appartient à une org, on lie le projet à cette org automatiquement
+    const membership = await this.prisma.membreOrganisation.findFirst({
+      where: { user_id: userId, statut: 'ACTIF' },
+    });
 
     const project = await this.prisma.project.create({
       data: {
@@ -34,19 +36,17 @@ export class ProjectsService {
         monitoring_type: data.monitoring_type || 'TECHNOLOGICAL',
         keywords: data.keywords || [],
         frequency: data.frequency || 'DAILY',
-        // start_date est auto-généré par @default(now()) dans Prisma
-        end_date: null, 
+        end_date: null,
         folder_id: data.folder_id || null,
         owner_user_id: userId,
+        // Si membre d'une org, lier automatiquement à cette org
+        organisation_id: membership ? membership.organisation_id : null,
       },
     });
     await this.logActivity(userId, 'CREATE_PROJECT', 'project', project.id);
     return project;
   }
 
-  /**
-   * Création d'un projet d'organisation
-   */
   async createOrgProject(data: any, userId: string, organisationId: string) {
     const role = await this.orgAccess.getOrgMemberRole(organisationId, userId);
     if (!this.orgAccess.canWrite(role)) {
@@ -67,142 +67,131 @@ export class ProjectsService {
         end_date: null,
         folder_id: data.folder_id || null,
         organisation_id: organisationId,
+        owner_user_id: userId,
       },
     });
     await this.logActivity(userId, 'CREATE_PROJECT', 'project', project.id);
     return project;
   }
 
-
   async getMyProjects(userId: string) {
-  const commonFilter = { is_deleted: false, isActive: true };
+    const commonFilter = { is_deleted: false, isActive: true };
 
-  const individualProjects = await this.prisma.project.findMany({
-    where: { ...commonFilter, owner_user_id: userId },
-    include: {
-      folder: true,
-      sources: true, // legacy sources
-      objectives: {
-        include: {
-          axes: {
-            include: {
-              hypotheses: {
-                include: {
-                  collection_plans: {
-                    include: { sources: true, keywords: true }
+    // Récupérer toutes les orgs de l'utilisateur
+    const memberships = await this.prisma.membreOrganisation.findMany({
+      where: { user_id: userId, statut: 'ACTIF' },
+      select: { organisation_id: true },
+    });
+    const orgIds = memberships.map(m => m.organisation_id);
+
+    // Projets individuels (owner ET pas lié à une org)
+    const individualProjects = await this.prisma.project.findMany({
+      where: { ...commonFilter, owner_user_id: userId, organisation_id: null },
+      include: {
+        folder: true,
+        sources: true,
+        objectives: {
+          include: {
+            axes: {
+              include: {
+                hypotheses: {
+                  include: {
+                    collection_plans: { include: { sources: true, keywords: true } }
                   }
                 }
               }
             }
           }
         }
-      }
-    },
-  });
+      },
+    });
 
-  const memberships = await this.prisma.membreOrganisation.findMany({
-    where: { user_id: userId, statut: 'ACTIF' },
-    select: { organisation_id: true },
-  });
-  const orgIds = memberships.map(m => m.organisation_id);
-
-  const orgProjects = orgIds.length > 0
-    ? await this.prisma.project.findMany({
-        where: { ...commonFilter, organisation_id: { in: orgIds } },
-        include: {
-          folder: true,
-          sources: true,
-          organisation: { select: { nom: true } },
-          objectives: {
-            include: {
-              axes: {
-                include: {
-                  hypotheses: {
-                    include: {
-                      collection_plans: {
-                        include: { sources: true, keywords: true }
+    // Projets d'organisation : tous les projets des orgs dont l'user est membre
+    const orgProjects = orgIds.length > 0
+      ? await this.prisma.project.findMany({
+          where: {
+            ...commonFilter,
+            organisation_id: { in: orgIds },
+          },
+          include: {
+            folder: true,
+            sources: true,
+            organisation: { select: { nom: true } },
+            objectives: {
+              include: {
+                axes: {
+                  include: {
+                    hypotheses: {
+                      include: {
+                        collection_plans: { include: { sources: true, keywords: true } }
                       }
                     }
                   }
                 }
               }
             }
-          }
-        },
-      })
-    : [];
+          },
+        })
+      : [];
 
-  // Enrichir chaque projet avec le total des sources des plans de collecte
-  const enrichProject = (project: any) => {
-    const planSources = project.objectives?.flatMap((obj: any) =>
-      obj.axes?.flatMap((axe: any) =>
-        axe.hypotheses?.flatMap((hyp: any) =>
-          hyp.collection_plans?.flatMap((plan: any) => plan.sources || []) || []
+    const enrichProject = (project: any) => {
+      const planSources = project.objectives?.flatMap((obj: any) =>
+        obj.axes?.flatMap((axe: any) =>
+          axe.hypotheses?.flatMap((hyp: any) =>
+            hyp.collection_plans?.flatMap((plan: any) => plan.sources || []) || []
+          ) || []
         ) || []
-      ) || []
-    ) || [];
+      ) || [];
+      return {
+        ...project,
+        _totalSources: (project.sources?.length || 0) + planSources.length,
+        _planSources: planSources,
+      };
+    };
 
     return {
-      ...project,
-      // On retourne le total combiné (legacy + plan sources)
-      _totalSources: (project.sources?.length || 0) + planSources.length,
-      _planSources: planSources,
+      individual: individualProjects.map(enrichProject),
+      organisation: orgProjects.map(enrichProject),
     };
-  };
+  }
 
-  return {
-    individual: individualProjects.map(enrichProject),
-    organisation: orgProjects.map(enrichProject),
-  };
-}
-
-/**
-   * Détail complet d'un projet
-   */
   async getProject(id: string, userId: string) {
-  await this.checkAccess(id, userId);
-  return this.prisma.project.findUnique({
-    where: { id },
-    include: {
-      sources: true,
-      folder: true,
-      // CORRECTIF : On récupère tous les périmètres (GEOGRAPHIC et SECTORAL)
-      // sans chercher de parentId ou de children car ils sont désormais au même niveau.
-      perimeters: true, 
-      organisation: { select: { nom: true } },
-      objectives: {
-        include: {
-          axes: {
-            include: {
-              hypotheses: {
-                include: {
-                  collection_plans: { 
-                    include: { sources: true, keywords: true } 
+    await this.checkAccess(id, userId);
+    return this.prisma.project.findUnique({
+      where: { id },
+      include: {
+        sources: true,
+        folder: true,
+        perimeters: true,
+        organisation: { select: { nom: true } },
+        objectives: {
+          include: {
+            axes: {
+              include: {
+                hypotheses: {
+                  include: {
+                    collection_plans: {
+                      include: { sources: true, keywords: true }
+                    },
                   },
-                  // Rappel : l'inclusion de perimeters ici a été supprimée
-                  // pour éviter l'erreur de type sur ProjectHypothesis.
                 },
               },
             },
           },
+          orderBy: { priority: 'asc' },
         },
-        orderBy: { priority: 'asc' },
+        stakeholders: {
+          include: { user: { select: { id: true, nom: true, email: true } } }
+        },
       },
-      stakeholders: { 
-        include: { user: { select: { id: true, nom: true, email: true } } } 
-      },
-    },
-  });
-}
+    });
+  }
 
-  /**
-   * Mise à jour    */
   async updateProject(id: string, userId: string, data: any) {
     const project = await this.checkWriteAccess(id, userId);
 
     if (data.end_date) {
       const newEndDate = new Date(data.end_date);
-      // Comparaison avec la date de début réelle du projet
       if (newEndDate < project.start_date) {
         throw new BadRequestException('La date de fin ne peut pas être antérieure à la date de début.');
       }
@@ -224,25 +213,16 @@ export class ProjectsService {
     return updated;
   }
 
-  /**
-   * Clôture formelle 
-   */
   async closeProject(id: string, userId: string) {
     await this.checkWriteAccess(id, userId);
     const closed = await this.prisma.project.update({
       where: { id },
-      data: { 
-        isActive: false, 
-        end_date: new Date() 
-      },
+      data: { isActive: false, end_date: new Date() },
     });
     await this.logActivity(userId, 'CLOSE_PROJECT', 'project', id);
     return closed;
   }
 
-  /**
-   * Archive un projet sans le supprimer
-   */
   async archiveProject(id: string, userId: string) {
     await this.checkWriteAccess(id, userId);
     const archived = await this.prisma.project.update({
@@ -253,17 +233,11 @@ export class ProjectsService {
     return { message: 'Projet archivé', project: archived };
   }
 
-  /**
-   * Soft Delete 
-   */
   async deleteProject(id: string, userId: string) {
     await this.checkWriteAccess(id, userId);
-    await this.prisma.project.update({ 
-      where: { id }, 
-      data: { 
-        is_deleted: true,
-        deleted_at: new Date() 
-      } 
+    await this.prisma.project.update({
+      where: { id },
+      data: { is_deleted: true, deleted_at: new Date() }
     });
     await this.logActivity(userId, 'DELETE_PROJECT', 'project', id);
     return { message: 'Projet supprimé avec succès' };
@@ -277,8 +251,8 @@ export class ProjectsService {
 
   private async logActivity(userId: string, action: string, entityType: string, entityId: string) {
     try {
-      await this.prisma.userActivityLog.create({ 
-        data: { user_id: userId, action, entityType, entityId } 
+      await this.prisma.userActivityLog.create({
+        data: { user_id: userId, action, entityType, entityId }
       });
     } catch {}
   }

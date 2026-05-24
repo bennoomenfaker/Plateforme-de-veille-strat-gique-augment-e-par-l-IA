@@ -316,7 +316,13 @@ export const adminService = {
   getPipeline: () => api.get('/admin/pipeline'),
 };
 
-// --- 14. FOLDERS ---
+// --- 14. REPORTS ---
+export const reportsService = {
+  getReportUrl: (projectId: string) => `/api/reports/project/${projectId}/html`,
+  downloadReport: (projectId: string) => api.get(`/reports/project/${projectId}/download`, { responseType: 'blob' }),
+};
+
+// --- 15. FOLDERS ---
 export const foldersService = {
   getAll: () => api.get('/folders'),
   create: (data: any) => api.post('/folders', data),

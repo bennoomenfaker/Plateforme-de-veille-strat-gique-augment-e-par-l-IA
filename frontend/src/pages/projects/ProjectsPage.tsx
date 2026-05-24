@@ -2,10 +2,17 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Layout from '../../components/layout/Layout';
 import api from '../../services/api';
+import { useAuth } from '../../context/AuthContext';
+import { useOrgRole } from '../../hooks/useOrgRole';
 
 export default function ProjectsPage() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const { canWrite } = useOrgRole();
+
+  // Pour les utilisateurs individuels, ils peuvent toujours écrire
+  const canCreateOrModify = user?.type_utilisateur === 'INDIVIDUEL' || canWrite;
 
   const { data, isLoading } = useQuery({
     queryKey: ['projects'],
@@ -28,15 +35,17 @@ export default function ProjectsPage() {
             <h1 className="text-2xl font-bold text-white">Projets de veille</h1>
             <p className="text-sm mt-1" style={{color:'#6b7280'}}>{allProjects.length} projet(s)</p>
           </div>
-          <button
-            onClick={() => navigate('/projects/new')}
-            className="inline-flex items-center gap-2 text-sm font-semibold px-5 py-2.5 rounded-xl transition"
-            style={{background:'linear-gradient(135deg,#3b82f6,#6366f1)', color:'white'}}>
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
-            </svg>
-            Nouveau projet
-          </button>
+          {canCreateOrModify && (
+            <button
+              onClick={() => navigate('/projects/new')}
+              className="inline-flex items-center gap-2 text-sm font-semibold px-5 py-2.5 rounded-xl transition"
+              style={{background:'linear-gradient(135deg,#3b82f6,#6366f1)', color:'white'}}>
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+              </svg>
+              Nouveau projet
+            </button>
+          )}
         </div>
 
         {isLoading ? (
@@ -49,12 +58,16 @@ export default function ProjectsPage() {
               </svg>
             </div>
             <p className="font-semibold mb-1 text-white">Aucun projet pour l'instant</p>
-            <p className="text-sm mb-6" style={{color:'#6b7280'}}>Créez votre premier projet de veille</p>
-            <button onClick={() => navigate('/projects/new')}
-              className="inline-flex items-center gap-2 text-sm font-bold px-6 py-2.5 rounded-xl"
-              style={{background:'linear-gradient(135deg,#3b82f6,#6366f1)', color:'white'}}>
-              Créer mon premier projet
-            </button>
+            <p className="text-sm mb-6" style={{color:'#6b7280'}}>
+              {canCreateOrModify ? 'Créez votre premier projet de veille' : 'Aucun projet disponible pour le moment'}
+            </p>
+            {canCreateOrModify && (
+              <button onClick={() => navigate('/projects/new')}
+                className="inline-flex items-center gap-2 text-sm font-bold px-6 py-2.5 rounded-xl"
+                style={{background:'linear-gradient(135deg,#3b82f6,#6366f1)', color:'white'}}>
+                Créer mon premier projet
+              </button>
+            )}
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -96,7 +109,7 @@ export default function ProjectsPage() {
                       style={{background:'linear-gradient(135deg,#3b82f6,#6366f1)', color:'white'}}>
                       Ouvrir
                     </button>
-                    {project.isActive && (
+                    {canCreateOrModify && project.isActive && (
                       <button onClick={() => archiveMutation.mutate(project.id)}
                         className="px-3 py-2 rounded-xl transition"
                         style={{border:'1px solid #1e2535', color:'#6b7280'}}>
