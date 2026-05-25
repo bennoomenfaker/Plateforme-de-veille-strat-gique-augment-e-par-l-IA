@@ -216,7 +216,7 @@ export default function CollectionPlanDetailPage() {
 
   const jobs: CollectionJob[] = Array.isArray(jobsData) ? jobsData : [];
   const rawItems: RawItem[] = rawData?.data || [];
-  const uploads: RawItem[] = Array.isArray(uploadsData) ? uploadsData : [];
+  const uploads: RawItem[] = Array.isArray(uploadsData) ? uploadsData : Array.isArray(uploadsData?.data) ? uploadsData.data : [];
 
   const tabs = [
     { key: 'overview', label: 'Vue d\'ensemble'                         },

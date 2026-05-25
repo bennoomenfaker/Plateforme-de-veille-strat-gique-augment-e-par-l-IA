@@ -133,13 +133,13 @@ export const collectionPlanService = {
     api.post(`/collection-plans/${planId}/keywords`, data),
   removeKeyword: (keywordId: string) =>
     api.delete(`/collection-plan-keywords/${keywordId}`),
-  run: (planId: string) => api.post(`/collection/trigger/${planId}`),
+  run: (planId: string) => api.post(`/collection-plans/${planId}/run`),
 };
 
 // --- 6. COLLECTION ENGINE ---
 export const collectionService = {
   triggerManual: (planId: string) =>
-    api.post(`/collection/trigger/${planId}`),
+    api.post(`/collection-plans/${planId}/run`),
   getJobsByPlan: (planId: string) =>
     api.get(`/collection/jobs/${planId}`),
 };
@@ -186,7 +186,7 @@ export const processingService = {
 
 // --- 9. UPLOAD ---
 export const uploadService = {
-  getByPlan: (planId: string) => api.get(`/etl/plan/${planId}/raw-items`),
+  getByPlan: (planId: string) => api.get(`/uploads/plan/${planId}`),
   uploadPdf: (...args: [projectId: string, planId: string, file: File] | [planId: string, file: File]) => {
     const hasProjectId = args.length === 3;
     const projectId = hasProjectId ? args[0] : undefined;
@@ -200,7 +200,7 @@ export const uploadService = {
       formData.append('project_id', projectId);
     }
 
-    return api.post('/upload/pdf', formData, {
+    return api.post('/uploads/pdf', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   },

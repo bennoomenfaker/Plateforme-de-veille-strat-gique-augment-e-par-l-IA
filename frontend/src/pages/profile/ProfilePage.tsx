@@ -29,9 +29,11 @@ export default function ProfilePage() {
     setLoading(true); setMsg(''); setError('');
     try {
       const res = await authService.updateProfile({ nom });
+      const updatedUser = { ...user, ...res.data };
       if (user && token) {
         const refresh = localStorage.getItem('refresh_token');
-        login(token, refresh || '', { ...user, ...res.data });
+        localStorage.setItem('user', JSON.stringify(updatedUser));
+        login(token, refresh || '', updatedUser);
       }
       setMsg('Profil mis à jour avec succès');
     } catch (err: any) {
@@ -47,9 +49,11 @@ export default function ProfilePage() {
     setLoading(true); setMsg(''); setError('');
     try {
       const res = await authService.uploadAvatar(file);
+      const updatedUser = { ...user, ...res.data };
       if (user && token) {
         const refresh = localStorage.getItem('refresh_token');
-        login(token, refresh || '', { ...user, ...res.data });
+        localStorage.setItem('user', JSON.stringify(updatedUser));
+        login(token, refresh || '', updatedUser);
       }
       setMsg('Photo de profil mise à jour');
     } catch (err: any) {
@@ -60,7 +64,7 @@ export default function ProfilePage() {
   };
 
   const avatarSrc = user?.photo_url
-    ? (user.photo_url.startsWith('http') ? user.photo_url : user.photo_url)
+    ? (user.photo_url.startsWith('http') ? user.photo_url : `/api${user.photo_url}`)
     : null;
 
   const handleChangePassword = async (e: React.FormEvent) => {

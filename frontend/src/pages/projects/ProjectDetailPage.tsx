@@ -231,7 +231,7 @@ export default function ProjectDetailPage() {
               className="text-sm font-semibold px-4 py-2 rounded-xl transition"
               style={{ background: 'rgba(16,185,129,0.15)', color: '#34d399', border: '1px solid rgba(16,185,129,0.3)' }}
             >
-              📦 Données brutes
+              Données brutes
             </Link>
 
             {/* ── SPRINT 4 — Bouton Données nettoyées ── */}
@@ -244,7 +244,7 @@ export default function ProjectDetailPage() {
                 border: '1px solid rgba(167,139,250,0.3)',
               }}
             >
-              🧹 Données nettoyées
+              Données nettoyées
             </Link>
 
             {/* Sprint 5 — Enrichissement IA */}
@@ -253,7 +253,7 @@ export default function ProjectDetailPage() {
           className="text-sm font-semibold px-4 py-2 rounded-xl transition"
           style={{ background: "rgba(139,92,246,0.15)", color: "#a78bfa", border: "1px solid rgba(139,92,246,0.3)" }}
         >
-          🧠 Enrichissement IA
+          Enrichissement IA
         </Link>
 
         {/* Sprint 6 — Dashboard */}
@@ -262,7 +262,7 @@ export default function ProjectDetailPage() {
           className="text-sm font-semibold px-4 py-2 rounded-xl transition"
           style={{ background: "rgba(59,130,246,0.15)", color: "#60a5fa", border: "1px solid rgba(59,130,246,0.3)" }}
         >
-          📊 Dashboard insights
+          Dashboard insights
         </Link>
 
         {/* Analyser */}

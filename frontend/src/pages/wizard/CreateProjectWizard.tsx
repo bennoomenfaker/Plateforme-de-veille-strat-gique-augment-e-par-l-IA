@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Layout from '../../components/layout/Layout';
 import api from '../../services/api';
@@ -16,78 +16,87 @@ const STEPS = [
 
 const MONITORING_TYPES = [
   { value: 'TECHNOLOGICAL', label: 'Veille technologique' },
-  { value: 'COMPETITIVE', label: 'Veille concurrentielle' },
-  { value: 'REGULATORY', label: 'Veille réglementaire' },
-  { value: 'GEOPOLITICAL', label: 'Veille géopolitique' },
-  { value: 'ECONOMIC', label: 'Veille économique' },
-  { value: 'SCIENTIFIC', label: 'Veille scientifique' },
+  { value: 'COMPETITIVE',   label: 'Veille concurrentielle' },
+  { value: 'REGULATORY',    label: 'Veille réglementaire' },
+  { value: 'GEOPOLITICAL',  label: 'Veille géopolitique' },
+  { value: 'ECONOMIC',      label: 'Veille économique' },
+  { value: 'SCIENTIFIC',    label: 'Veille scientifique' },
   { value: 'CYBERSECURITY', label: 'Veille cybersécurité' },
 ];
 
+const SESSION_KEY = 'wizard_state';
+
+function loadSession() {
+  try {
+    const raw = sessionStorage.getItem(SESSION_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
+function saveSession(state: any) {
+  try { sessionStorage.setItem(SESSION_KEY, JSON.stringify(state)); } catch {}
+}
+
+function clearSession() {
+  try { sessionStorage.removeItem(SESSION_KEY); } catch {}
+}
+
 export default function CreateProjectWizard() {
   const navigate = useNavigate();
-  const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError]     = useState('');
 
-  const [projectId, setProjectId] = useState('');
-  const [objectives, setObjectives] = useState<any[]>([]);
-  const [axes, setAxes] = useState<any[]>([]);
-  const [hypotheses, setHypotheses] = useState<any[]>([]);
-  const [perimeters, setPerimeters] = useState<any[]>([]);
-  const [plans, setPlans] = useState<any[]>([]);
+  // Restaurer depuis sessionStorage si dispo
+  const session = loadSession();
 
-  const [projectForm, setProjectForm] = useState({
-    nom: '',
-    description: '',
-    monitoring_type: 'TECHNOLOGICAL',
-    frequency: 'DAILY',
-    folder_id: '',
+  const [step,        setStep]        = useState(session?.step        ?? 1);
+  const [projectId,   setProjectId]   = useState(session?.projectId   ?? '');
+  const [objectives,  setObjectives]  = useState(session?.objectives  ?? []);
+  const [axes,        setAxes]        = useState(session?.axes        ?? []);
+  const [hypotheses,  setHypotheses]  = useState(session?.hypotheses  ?? []);
+  const [perimeters,  setPerimeters]  = useState(session?.perimeters  ?? []);
+  const [plans,       setPlans]       = useState(session?.plans       ?? []);
+  const [projectForm, setProjectForm] = useState(session?.projectForm ?? {
+    nom: '', description: '', monitoring_type: 'TECHNOLOGICAL', frequency: 'DAILY', folder_id: '',
   });
 
-  const [objForm, setObjForm] = useState({ content: '' });
-  const [axeForm, setAxeForm] = useState({ name: '', description: '', objective_id: '' });
-  const [hypForm, setHypForm] = useState({ content: '', axis_id: '' });
-  const [perimForm, setPerimForm] = useState({ name: '', type: 'GEOGRAPHIC', parent_id: '' });
-  const [planForm, setPlanForm] = useState({
-    question: '',
-    frequency: 'DAILY',
-    collection_start_date: '',
-    collection_end_date: '',
-    hypothesis_id: '',
-    sources: [] as any[],
-    keywords: [] as any[],
+  const [objForm,    setObjForm]    = useState({ content: '' });
+  const [axeForm,    setAxeForm]    = useState({ name: '', description: '', objective_id: '' });
+  const [hypForm,    setHypForm]    = useState({ content: '', axis_id: '' });
+  const [perimForm,  setPerimForm]  = useState({ name: '', type: 'GEOGRAPHIC', parent_id: '' });
+  const [planForm,   setPlanForm]   = useState({
+    question: '', collection_start_date: '',
+    collection_end_date: '', hypothesis_id: '', sources: [] as any[], keywords: [] as any[],
   });
   const [sourceForm, setSourceForm] = useState({ source_type: 'RSS', source_label: '', source_url: '' });
-  const [kwForm, setKwForm] = useState({ keyword: '', keyword_type: 'INCLUDE' });
+  const [kwForm,     setKwForm]     = useState({ keyword: '', keyword_type: 'INCLUDE' });
+
+  // Sauvegarder dans sessionStorage à chaque changement d'état important
+  useEffect(() => {
+    if (step > 1 || projectId) {
+      saveSession({ step, projectId, objectives, axes, hypotheses, perimeters, plans, projectForm });
+    }
+  }, [step, projectId, objectives, axes, hypotheses, perimeters, plans]);
 
   const inputStyle: React.CSSProperties = {
-    background: '#0f1117',
-    border: '1px solid #1e2535',
-    color: 'white',
-    borderRadius: '0.75rem',
-    padding: '0.625rem 1rem',
-    fontSize: '0.875rem',
-    width: '100%',
-    outline: 'none',
+    background: '#0f1117', border: '1px solid #1e2535', color: 'white',
+    borderRadius: '0.75rem', padding: '0.625rem 1rem', fontSize: '0.875rem',
+    width: '100%', outline: 'none',
   };
   const cardStyle: React.CSSProperties = {
-    background: '#161b27',
-    border: '1px solid #1e2535',
-    borderRadius: '1rem',
-    padding: '1.5rem',
+    background: '#161b27', border: '1px solid #1e2535', borderRadius: '1rem', padding: '1.5rem',
   };
+
+  // ── Handlers ────────────────────────────────────────────────────────────────
 
   const handleCreateProject = async () => {
     if (!projectForm.nom) { setError('Le nom du projet est obligatoire'); return; }
     setLoading(true); setError('');
     try {
       const res = await api.post('/projects', {
-        nom: projectForm.nom,
-        description: projectForm.description,
+        nom: projectForm.nom, description: projectForm.description,
         monitoring_type: projectForm.monitoring_type,
-        frequency: projectForm.frequency,
-        folder_id: projectForm.folder_id || null,
+        frequency: projectForm.frequency, folder_id: projectForm.folder_id || null,
       });
       setProjectId(res.data.id);
       setStep(2);
@@ -101,8 +110,7 @@ export default function CreateProjectWizard() {
     setLoading(true); setError('');
     try {
       const res = await api.post(`/projects/${projectId}/objectives`, {
-        content: objForm.content,
-        priority: objectives.length + 1,
+        content: objForm.content, priority: objectives.length + 1,
       });
       setObjectives([...objectives, res.data]);
       setObjForm({ content: '' });
@@ -113,42 +121,27 @@ export default function CreateProjectWizard() {
   const handleDeleteObjective = async (id: string) => {
     try {
       await api.delete(`/projects/${projectId}/objectives/${id}`);
-      setObjectives(objectives.filter(o => o.id !== id));
+      setObjectives(objectives.filter((o: any) => o.id !== id));
     } catch (e: any) { setError(e.response?.data?.message || 'Erreur suppression objectif'); }
   };
 
   const handleAddAxe = async () => {
-  // 1. On vérifie name (ou label selon ton interface) et l'id de l'objectif
-  if (!axeForm.name || !axeForm.objective_id) { 
-    setError('Nom et objectif obligatoires'); return; 
-  }
-  
-  setLoading(true); setError('');
-  try {
-    // On garde l'URL qui lie l'axe à l'objectif directement
-    const res = await api.post(`/objectives/${axeForm.objective_id}/axes`, {
-      name: axeForm.name,
-      description: axeForm.description,
-      priority: 1, // Garde la priorité par défaut
-    });
-
-    // On ajoute l'axe à la liste locale
-    setAxes([...axes, { ...res.data, objective_id: axeForm.objective_id }]);
-    
-    // On vide le nom et la description mais on peut GARDER l'objectif sélectionné 
-    // pour en ajouter un deuxième au même objectif plus vite
-    setAxeForm({ ...axeForm, name: '', description: '' });
-  } catch (e: any) { 
-    setError(e.response?.data?.message || 'Erreur axe'); 
-  } finally { 
-    setLoading(false); 
-  }
-};
+    if (!axeForm.name || !axeForm.objective_id) { setError('Nom et objectif obligatoires'); return; }
+    setLoading(true); setError('');
+    try {
+      const res = await api.post(`/objectives/${axeForm.objective_id}/axes`, {
+        name: axeForm.name, description: axeForm.description, priority: 1,
+      });
+      setAxes([...axes, { ...res.data, objective_id: axeForm.objective_id }]);
+      setAxeForm({ ...axeForm, name: '', description: '' });
+    } catch (e: any) { setError(e.response?.data?.message || 'Erreur axe'); }
+    finally { setLoading(false); }
+  };
 
   const handleDeleteAxe = async (id: string, objectiveId: string) => {
     try {
       await api.delete(`/objectives/${objectiveId}/axes/${id}`);
-      setAxes(axes.filter(a => a.id !== id));
+      setAxes(axes.filter((a: any) => a.id !== id));
     } catch (e: any) { setError(e.response?.data?.message || 'Erreur suppression axe'); }
   };
 
@@ -157,8 +150,7 @@ export default function CreateProjectWizard() {
     setLoading(true); setError('');
     try {
       const res = await api.post(`/axes/${hypForm.axis_id}/hypotheses`, {
-        content: hypForm.content,
-        priority: 1,
+        content: hypForm.content, priority: 1,
       });
       setHypotheses([...hypotheses, { ...res.data, axis_id: hypForm.axis_id }]);
       setHypForm({ ...hypForm, content: '' });
@@ -169,7 +161,7 @@ export default function CreateProjectWizard() {
   const handleDeleteHyp = async (id: string, axisId: string) => {
     try {
       await api.delete(`/axes/${axisId}/hypotheses/${id}`);
-      setHypotheses(hypotheses.filter(h => h.id !== id));
+      setHypotheses(hypotheses.filter((h: any) => h.id !== id));
     } catch (e: any) { setError(e.response?.data?.message || 'Erreur suppression hypothèse'); }
   };
 
@@ -178,9 +170,7 @@ export default function CreateProjectWizard() {
     setLoading(true); setError('');
     try {
       const res = await api.post(`/projects/${projectId}/perimeters`, {
-        name: perimForm.name,
-        type: perimForm.type,
-        parent_id: perimForm.parent_id || null,
+        name: perimForm.name, type: perimForm.type, parent_id: perimForm.parent_id || null,
       });
       setPerimeters([...perimeters, res.data]);
       setPerimForm({ ...perimForm, name: '', parent_id: '' });
@@ -191,24 +181,21 @@ export default function CreateProjectWizard() {
   const handleDeletePerimeter = async (id: string) => {
     try {
       await api.delete(`/perimeters/${id}`);
-      setPerimeters(perimeters.filter(p => p.id !== id));
+      setPerimeters(perimeters.filter((p: any) => p.id !== id));
     } catch (e: any) { setError(e.response?.data?.message || 'Erreur suppression périmètre'); }
   };
 
   const handleCreatePlan = async () => {
-    if (!planForm.question || !planForm.hypothesis_id) {
-      setError('Question et hypothèse obligatoires'); return;
-    }
+    if (!planForm.question || !planForm.hypothesis_id) { setError('Question et hypothèse obligatoires'); return; }
     if (planForm.collection_start_date && planForm.collection_end_date) {
       if (new Date(planForm.collection_end_date) < new Date(planForm.collection_start_date)) {
-        setError('La date de fin de collecte ne peut pas être avant la date de début'); return;
+        setError('La date de fin ne peut pas être avant la date de début'); return;
       }
     }
     setLoading(true); setError('');
     try {
       const res = await api.post(`/hypotheses/${planForm.hypothesis_id}/collection-plans`, {
-        question: planForm.question,
-        frequency: planForm.frequency,
+        question: planForm.question, frequency: projectForm.frequency,
         collection_start_date: planForm.collection_start_date || null,
         collection_end_date: planForm.collection_end_date || null,
       });
@@ -220,7 +207,7 @@ export default function CreateProjectWizard() {
         await api.post(`/collection-plans/${planId}/keywords`, kw);
       }
       setPlans([...plans, { ...res.data, sources: planForm.sources, keywords: planForm.keywords }]);
-      setPlanForm({ question: '', frequency: 'DAILY', collection_start_date: '', collection_end_date: '', hypothesis_id: '', sources: [], keywords: [] });
+      setPlanForm({ question: '', collection_start_date: '', collection_end_date: '', hypothesis_id: '', sources: [], keywords: [] });
     } catch (e: any) { setError(e.response?.data?.message || 'Erreur plan de collecte'); }
     finally { setLoading(false); }
   };
@@ -228,16 +215,20 @@ export default function CreateProjectWizard() {
   const handleDeletePlan = async (id: string) => {
     try {
       await api.delete(`/collection-plans/${id}`);
-      setPlans(plans.filter(p => p.id !== id));
+      setPlans(plans.filter((p: any) => p.id !== id));
     } catch (e: any) { setError(e.response?.data?.message || 'Erreur suppression plan'); }
   };
 
-  const next = () => { setError(''); setStep(s => s + 1); };
-  const prev = () => { setError(''); setStep(s => s - 1); };
+  const next = () => { setError(''); setStep((s: number) => s + 1); };
+  const prev = () => { setError(''); setStep((s: number) => s - 1); };
+
+  const handleFinish = () => {
+    clearSession();
+    navigate(`/projects/${projectId}`);
+  };
 
   const DeleteBtn = ({ onClick }: { onClick: () => void }) => (
-    <button onClick={onClick}
-      className="p-1.5 rounded-lg transition shrink-0"
+    <button onClick={onClick} className="p-1.5 rounded-lg transition shrink-0"
       style={{ background: 'rgba(239,68,68,0.1)', color: '#f87171', border: '1px solid rgba(239,68,68,0.2)' }}>
       <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -324,7 +315,6 @@ export default function CreateProjectWizard() {
                   </select>
                 </div>
               </div>
-              
             </div>
             <div className="flex justify-end mt-6">
               <button onClick={handleCreateProject} disabled={loading}
@@ -341,9 +331,8 @@ export default function CreateProjectWizard() {
           <div style={cardStyle}>
             <h2 className="text-lg font-bold text-white mb-2">Objectifs stratégiques</h2>
             <p className="text-xs mb-5" style={{ color: '#6b7280' }}>Définissez le "pourquoi" de votre veille (max 5 objectifs)</p>
-
             <div className="space-y-2 mb-5">
-              {objectives.map((obj, i) => (
+              {objectives.map((obj: any, i: number) => (
                 <div key={obj.id} className="flex items-center gap-3 px-4 py-3 rounded-xl"
                   style={{ background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.15)' }}>
                   <span className="text-xs font-bold px-2 py-0.5 rounded-full shrink-0"
@@ -353,7 +342,6 @@ export default function CreateProjectWizard() {
                 </div>
               ))}
             </div>
-
             {objectives.length < 5 && (
               <div className="flex gap-3">
                 <input style={{ ...inputStyle, flex: 1 }} value={objForm.content}
@@ -365,7 +353,6 @@ export default function CreateProjectWizard() {
                   style={{ background: 'linear-gradient(135deg,#3b82f6,#6366f1)' }}>+ Ajouter</button>
               </div>
             )}
-
             <div className="flex justify-between mt-6">
               <button onClick={prev} className="px-4 py-2 rounded-xl text-sm" style={{ border: '1px solid #1e2535', color: '#9ca3af' }}>← Retour</button>
               <button onClick={next} disabled={objectives.length === 0}
@@ -381,11 +368,10 @@ export default function CreateProjectWizard() {
         {step === 3 && (
           <div style={cardStyle}>
             <h2 className="text-lg font-bold text-white mb-2">Axes d'analyse</h2>
-            <p className="text-xs mb-5" style={{ color: '#6b7280' }}>Max 5 axes par objectif</p>
-
+            <p className="text-xs mb-5" style={{ color: '#6b7280' }}>Associez des axes à chaque objectif (max 5 par objectif)</p>
             <div className="space-y-2 mb-5">
-              {axes.map((axe) => {
-                const obj = objectives.find(o => o.id === axe.objective_id);
+              {axes.map((axe: any) => {
+                const obj = objectives.find((o: any) => o.id === axe.objective_id);
                 return (
                   <div key={axe.id} className="flex items-center gap-3 px-4 py-3 rounded-xl"
                     style={{ background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.15)' }}>
@@ -398,18 +384,17 @@ export default function CreateProjectWizard() {
                 );
               })}
             </div>
-
             <div className="space-y-3">
               <div>
                 {label('Objectif associé *')}
                 <select style={inputStyle} value={axeForm.objective_id}
                   onChange={e => setAxeForm({ ...axeForm, objective_id: e.target.value })}>
                   <option value="">Sélectionner un objectif</option>
-                  {objectives.map(obj => <option key={obj.id} value={obj.id}>{obj.content.substring(0, 60)}</option>)}
+                  {objectives.map((obj: any) => <option key={obj.id} value={obj.id}>{obj.content.substring(0, 60)}</option>)}
                 </select>
               </div>
               <div>
-                {label('Nom de l\'axe *')}
+                {label("Nom de l'axe *")}
                 <input style={inputStyle} value={axeForm.name}
                   onChange={e => setAxeForm({ ...axeForm, name: e.target.value })}
                   placeholder="Ex: Axe technologique" />
@@ -426,7 +411,6 @@ export default function CreateProjectWizard() {
                 + Ajouter l'axe
               </button>
             </div>
-
             <div className="flex justify-between mt-6">
               <button onClick={prev} className="px-4 py-2 rounded-xl text-sm" style={{ border: '1px solid #1e2535', color: '#9ca3af' }}>← Retour</button>
               <button onClick={next} disabled={axes.length === 0}
@@ -443,10 +427,9 @@ export default function CreateProjectWizard() {
           <div style={cardStyle}>
             <h2 className="text-lg font-bold text-white mb-2">Hypothèses stratégiques</h2>
             <p className="text-xs mb-5" style={{ color: '#6b7280' }}>Suppositions à tester par la collecte</p>
-
             <div className="space-y-2 mb-5">
-              {hypotheses.map((hyp) => {
-                const axe = axes.find(a => a.id === hyp.axis_id);
+              {hypotheses.map((hyp: any) => {
+                const axe = axes.find((a: any) => a.id === hyp.axis_id);
                 return (
                   <div key={hyp.id} className="flex items-center gap-3 px-4 py-3 rounded-xl"
                     style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.15)' }}>
@@ -459,14 +442,13 @@ export default function CreateProjectWizard() {
                 );
               })}
             </div>
-
             <div className="space-y-3">
               <div>
                 {label('Axe associé *')}
                 <select style={inputStyle} value={hypForm.axis_id}
                   onChange={e => setHypForm({ ...hypForm, axis_id: e.target.value })}>
                   <option value="">Sélectionner un axe</option>
-                  {axes.map(axe => <option key={axe.id} value={axe.id}>{axe.name}</option>)}
+                  {axes.map((axe: any) => <option key={axe.id} value={axe.id}>{axe.name}</option>)}
                 </select>
               </div>
               <div>
@@ -482,7 +464,6 @@ export default function CreateProjectWizard() {
                 + Ajouter l'hypothèse
               </button>
             </div>
-
             <div className="flex justify-between mt-6">
               <button onClick={prev} className="px-4 py-2 rounded-xl text-sm" style={{ border: '1px solid #1e2535', color: '#9ca3af' }}>← Retour</button>
               <button onClick={next} disabled={hypotheses.length === 0}
@@ -499,22 +480,20 @@ export default function CreateProjectWizard() {
           <div style={cardStyle}>
             <h2 className="text-lg font-bold text-white mb-2">Périmètres</h2>
             <p className="text-xs mb-5" style={{ color: '#6b7280' }}>Définissez les périmètres géographiques et sectoriels</p>
-
             <div className="space-y-2 mb-5">
-              {perimeters.map((p) => (
+              {perimeters.map((p: any) => (
                 <div key={p.id} className="flex items-center gap-3 px-4 py-3 rounded-xl"
                   style={{ background: 'rgba(251,146,60,0.08)', border: '1px solid rgba(251,146,60,0.15)' }}>
                   <span className="text-xs px-2 py-0.5 rounded-full font-bold shrink-0"
                     style={p.type === 'GEOGRAPHIC'
                       ? { background: 'rgba(59,130,246,0.15)', color: '#60a5fa' }
                       : { background: 'rgba(139,92,246,0.15)', color: '#a78bfa' }
-                    }>{p.type === 'GEOGRAPHIC' ? '🌍' : '🏭'} {p.type}</span>
+                    }>{p.type === 'GEOGRAPHIC' ? 'GEO' : 'SEC'}</span>
                   <p className="text-sm text-white flex-1">{p.name}</p>
                   <DeleteBtn onClick={() => handleDeletePerimeter(p.id)} />
                 </div>
               ))}
             </div>
-
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -532,25 +511,12 @@ export default function CreateProjectWizard() {
                   </select>
                 </div>
               </div>
-              {perimeters.filter(p => p.type === perimForm.type).length > 0 && (
-                <div>
-                  {label('Parent (optionnel)')}
-                  <select style={inputStyle} value={perimForm.parent_id}
-                    onChange={e => setPerimForm({ ...perimForm, parent_id: e.target.value })}>
-                    <option value="">Aucun parent</option>
-                    {perimeters.filter(p => p.type === perimForm.type).map(p => (
-                      <option key={p.id} value={p.id}>{p.name}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
               <button onClick={handleAddPerimeter} disabled={loading}
                 className="w-full py-2.5 rounded-xl text-sm font-bold text-white"
                 style={{ background: 'linear-gradient(135deg,#3b82f6,#6366f1)' }}>
                 + Ajouter le périmètre
               </button>
             </div>
-
             <div className="flex justify-between mt-6">
               <button onClick={prev} className="px-4 py-2 rounded-xl text-sm" style={{ border: '1px solid #1e2535', color: '#9ca3af' }}>← Retour</button>
               <button onClick={next}
@@ -566,10 +532,9 @@ export default function CreateProjectWizard() {
         {step === 6 && (
           <div style={cardStyle}>
             <h2 className="text-lg font-bold text-white mb-2">Plans de collecte</h2>
-            <p className="text-xs mb-5" style={{ color: '#6b7280' }}>Configurez les questions et stratégies de collecte</p>
-
+            <p className="text-xs mb-5" style={{ color: '#6b7280' }}>Configurez les questions et stratégies de collecte par hypothèse</p>
             <div className="space-y-2 mb-5">
-              {plans.map((plan) => (
+              {plans.map((plan: any) => (
                 <div key={plan.id} className="flex items-start gap-3 px-4 py-3 rounded-xl"
                   style={{ background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.15)' }}>
                   <div className="flex-1">
@@ -584,17 +549,15 @@ export default function CreateProjectWizard() {
                 </div>
               ))}
             </div>
-
             <div className="space-y-4">
               <div>
                 {label('Hypothèse associée *')}
                 <select style={inputStyle} value={planForm.hypothesis_id}
                   onChange={e => setPlanForm({ ...planForm, hypothesis_id: e.target.value })}>
                   <option value="">Sélectionner une hypothèse</option>
-                  {hypotheses.map(h => <option key={h.id} value={h.id}>{h.content.substring(0, 70)}</option>)}
+                  {hypotheses.map((h: any) => <option key={h.id} value={h.id}>{h.content.substring(0, 70)}</option>)}
                 </select>
               </div>
-
               <div>
                 {label('Question de recherche *')}
                 <textarea style={{ ...inputStyle, resize: 'none' } as React.CSSProperties} rows={2}
@@ -602,18 +565,7 @@ export default function CreateProjectWizard() {
                   onChange={e => setPlanForm({ ...planForm, question: e.target.value })}
                   placeholder="Ex: Quelles sont les dernières publications sur les LLM ?" />
               </div>
-
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  {label('Fréquence *')}
-                  <select style={inputStyle} value={planForm.frequency}
-                    onChange={e => setPlanForm({ ...planForm, frequency: e.target.value })}>
-                    <option value="ON_DEMAND">À la demande</option>
-                    <option value="DAILY">Quotidienne</option>
-                    <option value="WEEKLY">Hebdomadaire</option>
-                    <option value="MONTHLY">Mensuelle</option>
-                  </select>
-                </div>
+              <div className="grid grid-cols-2 gap-3">
                 <div>
                   {label('Début collecte')}
                   <input type="date" style={inputStyle} value={planForm.collection_start_date}
@@ -628,68 +580,86 @@ export default function CreateProjectWizard() {
 
               {/* Sources */}
               <div className="rounded-xl p-4" style={{ background: '#0f1117', border: '1px solid #1e2535' }}>
-                {label('Sources')}
+                {label('Sources de collecte')}
                 <div className="space-y-2 mb-3">
-                  {planForm.sources.map((s, i) => (
+                  {planForm.sources.map((s: any, i: number) => (
                     <div key={i} className="flex items-center gap-2 text-xs px-3 py-2 rounded-lg"
                       style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.15)' }}>
-                      <span className="font-bold" style={{ color: '#60a5fa' }}>{s.source_type}</span>
-                      <span className="text-white">{s.source_label}</span>
-                      <span className="truncate flex-1" style={{ color: '#6b7280' }}>{s.source_url}</span>
-                      <button onClick={() => setPlanForm({ ...planForm, sources: planForm.sources.filter((_, j) => j !== i) })}
+                      <span className="font-bold shrink-0" style={{ color: '#60a5fa' }}>{s.source_type}</span>
+                      <span className="text-white shrink-0">{s.source_label}</span>
+                      {s.source_url && <span className="truncate flex-1" style={{ color: '#6b7280' }}>{s.source_url}</span>}
+                      <button onClick={() => setPlanForm({ ...planForm, sources: planForm.sources.filter((_: any, j: number) => j !== i) })}
                         style={{ color: '#ef4444' }}>×</button>
                     </div>
                   ))}
                 </div>
-                <div className="grid grid-cols-4 gap-2">
-                  <select style={inputStyle} value={sourceForm.source_type}
-                    onChange={e => setSourceForm({ ...sourceForm, source_type: e.target.value })}>
-                    <option value="RSS">RSS</option>
-                    <option value="WEB">Web</option>
-                    <option value="API">API</option>
-                    <option value="DOCUMENT">Document</option>
-                  </select>
-                  <input style={inputStyle} value={sourceForm.source_label}
-                    onChange={e => setSourceForm({ ...sourceForm, source_label: e.target.value })}
-                    placeholder="Label" />
-                  <input style={inputStyle} value={sourceForm.source_url}
-                    onChange={e => setSourceForm({ ...sourceForm, source_url: e.target.value })}
-                    placeholder="https://..." />
+                <div className="space-y-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      {label('Type de source')}
+                      <select style={inputStyle} value={sourceForm.source_type}
+                        onChange={e => setSourceForm({ ...sourceForm, source_type: e.target.value, source_url: '' })}>
+                        <option value="RSS">RSS — Flux RSS</option>
+                        <option value="WEB">Web — Page web</option>
+                        <option value="API">API — Endpoint REST</option>
+                        <option value="DOCUMENT">Document — PDF / fichier</option>
+                      </select>
+                    </div>
+                    <div>
+                      {label('Libellé *')}
+                      <input style={inputStyle} value={sourceForm.source_label}
+                        onChange={e => setSourceForm({ ...sourceForm, source_label: e.target.value })}
+                        placeholder="Ex: Reuters RSS, Mon PDF..." />
+                    </div>
+                  </div>
+                  {(sourceForm.source_type === 'RSS' || sourceForm.source_type === 'WEB' || sourceForm.source_type === 'API') && (
+                    <div>
+                      {label(sourceForm.source_type === 'RSS' ? 'URL du flux RSS *' : sourceForm.source_type === 'API' ? "URL de l'endpoint API *" : 'URL de la page web *')}
+                      <input style={inputStyle} value={sourceForm.source_url}
+                        onChange={e => setSourceForm({ ...sourceForm, source_url: e.target.value })}
+                        placeholder={sourceForm.source_type === 'RSS' ? 'https://feeds.reuters.com/...' : 'https://...'}  />
+                    </div>
+                  )}
+                  {sourceForm.source_type === 'DOCUMENT' && (
+                    <div className="rounded-lg p-3 text-xs" style={{ background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.2)', color: '#fbbf24' }}>
+                      Les documents PDF peuvent être uploadés depuis la page du plan de collecte après la création du projet.
+                    </div>
+                  )}
                   <button onClick={() => {
-                    if (sourceForm.source_label && sourceForm.source_url) {
+                    if (sourceForm.source_label) {
                       setPlanForm({ ...planForm, sources: [...planForm.sources, { ...sourceForm }] });
                       setSourceForm({ source_type: 'RSS', source_label: '', source_url: '' });
                     }
-                  }} className="py-2 rounded-xl text-sm font-bold text-white"
-                    style={{ background: '#3b82f6' }}>+ Source</button>
+                  }} className="w-full py-2 rounded-xl text-sm font-bold text-white"
+                    style={{ background: '#3b82f6' }}>+ Ajouter la source</button>
                 </div>
               </div>
 
-              {/* Mots-clés INCLUDE / EXCLUDE */}
+              {/* Mots-clés */}
               <div className="rounded-xl p-4" style={{ background: '#0f1117', border: '1px solid #1e2535' }}>
-                {label('Mots-clés')}
+                {label('Mots-clés de filtrage')}
                 <div className="grid grid-cols-2 gap-4 mb-3">
                   <div>
-                    <p className="text-xs font-semibold mb-2" style={{ color: '#34d399' }}>✓ Inclus</p>
+                    <p className="text-xs font-semibold mb-2" style={{ color: '#34d399' }}>Inclus</p>
                     <div className="flex flex-wrap gap-1.5 min-h-6">
-                      {planForm.keywords.filter(k => k.keyword_type === 'INCLUDE').map((kw, i) => (
+                      {planForm.keywords.filter((k: any) => k.keyword_type === 'INCLUDE').map((kw: any, i: number) => (
                         <span key={i} className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg"
                           style={{ background: 'rgba(16,185,129,0.15)', color: '#34d399', border: '1px solid rgba(16,185,129,0.2)' }}>
                           {kw.keyword}
-                          <button onClick={() => setPlanForm({ ...planForm, keywords: planForm.keywords.filter((_, j) => planForm.keywords.indexOf(kw) !== j) })}
+                          <button onClick={() => setPlanForm({ ...planForm, keywords: planForm.keywords.filter((_: any, j: number) => planForm.keywords.indexOf(kw) !== j) })}
                             style={{ color: '#ef4444' }}>×</button>
                         </span>
                       ))}
                     </div>
                   </div>
                   <div>
-                    <p className="text-xs font-semibold mb-2" style={{ color: '#f87171' }}>✗ Exclus</p>
+                    <p className="text-xs font-semibold mb-2" style={{ color: '#f87171' }}>Exclus</p>
                     <div className="flex flex-wrap gap-1.5 min-h-6">
-                      {planForm.keywords.filter(k => k.keyword_type === 'EXCLUDE').map((kw, i) => (
+                      {planForm.keywords.filter((k: any) => k.keyword_type === 'EXCLUDE').map((kw: any, i: number) => (
                         <span key={i} className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg"
                           style={{ background: 'rgba(239,68,68,0.15)', color: '#f87171', border: '1px solid rgba(239,68,68,0.2)' }}>
                           {kw.keyword}
-                          <button onClick={() => setPlanForm({ ...planForm, keywords: planForm.keywords.filter((_, j) => planForm.keywords.indexOf(kw) !== j) })}
+                          <button onClick={() => setPlanForm({ ...planForm, keywords: planForm.keywords.filter((_: any, j: number) => planForm.keywords.indexOf(kw) !== j) })}
                             style={{ color: '#ef4444' }}>×</button>
                         </span>
                       ))}
@@ -699,8 +669,8 @@ export default function CreateProjectWizard() {
                 <div className="flex gap-2">
                   <select style={{ ...inputStyle, flex: '0 0 120px' }} value={kwForm.keyword_type}
                     onChange={e => setKwForm({ ...kwForm, keyword_type: e.target.value })}>
-                    <option value="INCLUDE">✓ Inclure</option>
-                    <option value="EXCLUDE">✗ Exclure</option>
+                    <option value="INCLUDE">Inclure</option>
+                    <option value="EXCLUDE">Exclure</option>
                   </select>
                   <input style={{ ...inputStyle, flex: 1 }} value={kwForm.keyword}
                     onChange={e => setKwForm({ ...kwForm, keyword: e.target.value })}
@@ -727,7 +697,6 @@ export default function CreateProjectWizard() {
                 {loading ? 'Création...' : '+ Créer le plan de collecte'}
               </button>
             </div>
-
             <div className="flex justify-between mt-6">
               <button onClick={prev} className="px-4 py-2 rounded-xl text-sm" style={{ border: '1px solid #1e2535', color: '#9ca3af' }}>← Retour</button>
               <button onClick={next} disabled={plans.length === 0}
@@ -743,7 +712,7 @@ export default function CreateProjectWizard() {
         {step === 7 && (
           <div style={cardStyle}>
             <h2 className="text-lg font-bold text-white mb-2">Parties prenantes</h2>
-            <p className="text-xs mb-6" style={{ color: '#6b7280' }}>Uniquement pour les projets organisation (optionnel)</p>
+            <p className="text-xs mb-6" style={{ color: '#6b7280' }}>Optionnel — peuvent être ajoutés depuis la page du projet</p>
             <div className="rounded-xl p-4 text-center" style={{ background: '#0f1117', border: '1px solid #1e2535' }}>
               <p className="text-sm" style={{ color: '#6b7280' }}>
                 Les stakeholders peuvent être ajoutés depuis la page du projet après sa création.
@@ -763,36 +732,34 @@ export default function CreateProjectWizard() {
             <h2 className="text-lg font-bold text-white mb-6">Révision du projet</h2>
             <div className="space-y-3">
               {[
-                { label: 'Projet', value: projectForm.nom, color: '#60a5fa' },
-                { label: 'Type de veille', value: MONITORING_TYPES.find(t => t.value === projectForm.monitoring_type)?.label, color: '#a5b4fc' },
-                { label: 'Objectifs', count: objectives.length, color: '#34d399' },
-                { label: 'Axes', count: axes.length, color: '#a5b4fc' },
-                { label: 'Hypothèses', count: hypotheses.length, color: '#fb923c' },
-                { label: 'Périmètres', count: perimeters.length, color: '#f472b6' },
-                { label: 'Plans de collecte', count: plans.length, color: '#34d399' },
-              ].map((item, i) => (
+                { label: 'Projet',           value: projectForm.nom,                                                         color: '#60a5fa' },
+                { label: 'Type de veille',   value: MONITORING_TYPES.find(t => t.value === projectForm.monitoring_type)?.label, color: '#a5b4fc' },
+                { label: 'Objectifs',        count: objectives.length,  color: '#34d399' },
+                { label: 'Axes',             count: axes.length,        color: '#a5b4fc' },
+                { label: 'Hypothèses',       count: hypotheses.length,  color: '#fb923c' },
+                { label: 'Périmètres',       count: perimeters.length,  color: '#f472b6' },
+                { label: 'Plans de collecte',count: plans.length,       color: '#34d399' },
+              ].map((item: any, i: number) => (
                 <div key={i} className="flex items-center justify-between px-4 py-3 rounded-xl"
                   style={{ background: '#0f1117', border: '1px solid #1e2535' }}>
                   <p className="text-sm font-medium text-white">{item.label}</p>
-                  {'value' in item && item.value
+                  {item.value
                     ? <p className="text-sm font-bold" style={{ color: item.color }}>{item.value}</p>
                     : <span className="text-sm font-bold px-3 py-1 rounded-full"
                         style={{ background: 'rgba(59,130,246,0.1)', color: item.color }}>
-                        {(item as any).count} élément(s)
+                        {item.count} élément(s)
                       </span>
                   }
                 </div>
               ))}
             </div>
-
             <div className="mt-5 p-4 rounded-xl" style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)' }}>
-              <p className="text-sm font-semibold" style={{ color: '#34d399' }}>✓ Projet prêt pour la collecte</p>
+              <p className="text-sm font-semibold" style={{ color: '#34d399' }}>Projet prêt pour la collecte</p>
               <p className="text-xs mt-1" style={{ color: '#6b7280' }}>Vous pouvez maintenant lancer la collecte depuis la page du projet.</p>
             </div>
-
             <div className="flex justify-between mt-6">
               <button onClick={prev} className="px-4 py-2 rounded-xl text-sm" style={{ border: '1px solid #1e2535', color: '#9ca3af' }}>← Retour</button>
-              <button onClick={() => navigate(`/projects/${projectId}`)}
+              <button onClick={handleFinish}
                 className="px-6 py-2.5 rounded-xl text-sm font-bold text-white"
                 style={{ background: 'linear-gradient(135deg,#10b981,#059669)' }}>
                 Accéder au projet →

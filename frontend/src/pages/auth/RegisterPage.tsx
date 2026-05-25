@@ -6,6 +6,7 @@ export default function RegisterPage() {
   const navigate = useNavigate();
   const [form, setForm] = useState({ nom: '', email: '', mot_de_passe: '', confirm: '' });
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -22,7 +23,8 @@ export default function RegisterPage() {
         email: form.email,
         mot_de_passe: form.mot_de_passe,
       });
-      navigate('/login');
+      setSuccess(true);
+      setTimeout(() => navigate('/login'), 3000);
     } catch (err: any) {
       setError(formatApiError(err, "Erreur lors de l'inscription"));
     } finally {
@@ -65,72 +67,59 @@ export default function RegisterPage() {
             <p className="text-slate-400 text-sm">Compte individuel — usage personnel</p>
           </div>
 
-          {error && (
-            <div className="bg-red-500/10 border border-red-500/20 text-red-400 rounded-lg p-3 mb-5 text-sm">
-              {error}
+          {success ? (
+            <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-lg p-5 text-sm text-center">
+              <p className="text-lg font-bold mb-2">Compte créé avec succès !</p>
+              <p className="mb-3">Vous allez être redirigé vers la page de connexion dans 3 secondes.</p>
+              <Link to="/login" className="underline font-medium">Se connecter maintenant</Link>
             </div>
+          ) : (
+            <>
+              {error && (
+                <div className="bg-red-500/10 border border-red-500/20 text-red-400 rounded-lg p-3 mb-5 text-sm">
+                  {error}
+                </div>
+              )}
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-1.5">Nom complet</label>
+                  <input type="text" value={form.nom}
+                    onChange={e => setForm({ ...form, nom: e.target.value })}
+                    className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-slate-500"
+                    placeholder="Votre nom" required />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-1.5">Email</label>
+                  <input type="email" value={form.email}
+                    onChange={e => setForm({ ...form, email: e.target.value })}
+                    className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-slate-500"
+                    placeholder="vous@exemple.com" required />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-1.5">Mot de passe</label>
+                  <input type="password" value={form.mot_de_passe}
+                    onChange={e => setForm({ ...form, mot_de_passe: e.target.value })}
+                    className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-slate-500"
+                    placeholder="••••••••" required />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-1.5">Confirmer</label>
+                  <input type="password" value={form.confirm}
+                    onChange={e => setForm({ ...form, confirm: e.target.value })}
+                    className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-slate-500"
+                    placeholder="••••••••" required />
+                </div>
+                <button type="submit" disabled={loading}
+                  className="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2.5 rounded-lg transition text-sm disabled:opacity-50 mt-2">
+                  {loading ? 'Création...' : 'Créer mon compte'}
+                </button>
+              </form>
+              <p className="mt-6 text-center text-slate-400 text-sm">
+                Déjà un compte ?{' '}
+                <Link to="/login" className="text-blue-400 hover:text-blue-300 font-medium">Se connecter</Link>
+              </p>
+            </>
           )}
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1.5">Nom complet</label>
-              <input
-                type="text"
-                value={form.nom}
-                onChange={e => setForm({ ...form, nom: e.target.value })}
-                className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder-slate-500"
-                placeholder="Votre nom"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1.5">Email</label>
-              <input
-                type="email"
-                value={form.email}
-                onChange={e => setForm({ ...form, email: e.target.value })}
-                className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder-slate-500"
-                placeholder="vous@exemple.com"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1.5">Mot de passe</label>
-              <input
-                type="password"
-                value={form.mot_de_passe}
-                onChange={e => setForm({ ...form, mot_de_passe: e.target.value })}
-                className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder-slate-500"
-                placeholder="••••••••"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1.5">Confirmer</label>
-              <input
-                type="password"
-                value={form.confirm}
-                onChange={e => setForm({ ...form, confirm: e.target.value })}
-                className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder-slate-500"
-                placeholder="••••••••"
-                required
-              />
-            </div>
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2.5 rounded-lg transition text-sm disabled:opacity-50 mt-2"
-            >
-              {loading ? 'Création...' : 'Créer mon compte'}
-            </button>
-          </form>
-
-          <p className="mt-6 text-center text-slate-400 text-sm">
-            Déjà un compte ?{' '}
-            <Link to="/login" className="text-blue-400 hover:text-blue-300 font-medium">
-              Se connecter
-            </Link>
-          </p>
         </div>
       </div>
     </div>

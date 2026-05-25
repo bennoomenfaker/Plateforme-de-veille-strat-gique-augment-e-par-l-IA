@@ -1,8 +1,4 @@
-import {
-  Injectable,
-  NotFoundException,
-  ForbiddenException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
@@ -40,28 +36,28 @@ export class UploadService {
     const project = plan.hypothesis.axis.objective.project;
     const hasAccess =
       project.owner_user_id === userId ||
-      project.organisation?.members.some(
-        (m) => m.user_id === userId && m.statut === 'ACTIF',
-      );
+      project.organisation?.members.some(m => m.user_id === userId && m.statut === 'ACTIF');
+
     if (!hasAccess) throw new ForbiddenException('Accès refusé');
 
-    // Hash du fichier pour déduplication
     const fileBuffer = fs.readFileSync(file.path);
-    const hash = crypto
-      .createHash('sha256')
-      .update(fileBuffer)
-      .digest('hex');
+    const hash = crypto.createHash('sha256').update(fileBuffer).digest('hex');
 
     // Vérifier doublon
-    const existing = await this.prisma.rawItem.findUnique({
-      where: { hash },
-    });
+    const existing = await this.prisma.rawItem.findUnique({ where: { hash } });
     if (existing) {
-      return {
-        message: 'Ce fichier existe déjà',
-        raw_item_id: existing.id,
-        duplicate: true,
-      };
+      return { message: 'Ce fichier existe déjà', raw_item_id: existing.id, duplicate: true };
+    }
+
+    // Extraire le texte du PDF
+    let contentRaw: string | null = null;
+    try {
+      const pdfParse = require('pdf-parse');
+      const pdfData = await pdfParse(fileBuffer);
+      contentRaw = pdfData.text?.trim() || null;
+    } catch (err) {
+      // Si extraction échoue, on continue sans texte
+      contentRaw = null;
     }
 
     const rawItem = await this.prisma.rawItem.create({
@@ -73,14 +69,15 @@ export class UploadService {
         source_url: null,
         article_url: null,
         file_path: file.path,
-        title: file.originalname,
-        content_raw: null,
+        title: file.originalname.replace('.pdf', '').replace(/_/g, ' '),
+        content_raw: contentRaw,
         published_at: new Date(),
         hash,
         metadata: {
           originalName: file.originalname,
           size: file.size,
           mimetype: file.mimetype,
+          pages: null,
         },
       },
     });
@@ -90,15 +87,13 @@ export class UploadService {
       raw_item_id: rawItem.id,
       file_path: file.path,
       duplicate: false,
+      has_text: !!contentRaw,
     };
   }
 
   async getUploadsByPlan(planId: string, userId: string) {
     return this.prisma.rawItem.findMany({
-      where: {
-        collection_plan_id: planId,
-        source_type: 'UPLOAD',
-      },
+      where: { collection_plan_id: planId, source_type: 'UPLOAD' },
       orderBy: { fetched_at: 'desc' },
     });
   }
