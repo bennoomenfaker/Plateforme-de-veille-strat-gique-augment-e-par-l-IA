@@ -88,8 +88,8 @@ export class ProcessingService {
       const rawContent = rawItem.content_raw || '';
       const contentClean = this.cleanHtml(rawContent);
 
-      // Contenu trop court → SKIPPED
-      if (contentClean.length < 20 && !rawItem.filePath) {
+      // Contenu trop court → SKIPPED (seuil bas pour ne pas skipper les titres RSS)
+      if (contentClean.length < 10 && !rawItem.file_path && !rawItem.title) {
         await this.prisma.processedItem.create({
           data: {
             raw_item_id: rawItem.id,
@@ -113,12 +113,12 @@ export class ProcessingService {
         return { status: 'skipped', reason: 'content_too_short' };
       }
 
-      const language = this.detectLanguage(contentClean || rawItem.title || '');
-      const wordCount = contentClean
-        ? contentClean.split(/\s+/).filter(Boolean).length
-        : 0;
-      const charCount = contentClean ? contentClean.length : 0;
-      const excerpt = this.extractExcerpt(contentClean);
+      // Utiliser le titre comme contenu si le corps est vide (cas RSS snippet)
+      const effectiveContent = contentClean.length > 50 ? contentClean : (rawItem.title || contentClean);
+      const language = this.detectLanguage(effectiveContent);
+      const wordCount = effectiveContent ? effectiveContent.split(/\s+/).filter(Boolean).length : 0;
+      const charCount = effectiveContent ? effectiveContent.length : 0;
+      const excerpt = this.extractExcerpt(effectiveContent);
 
       await this.prisma.processedItem.create({
         data: {
@@ -126,7 +126,7 @@ export class ProcessingService {
           project_id: rawItem.project_id,
           collection_plan_id: rawItem.collection_plan_id,
           title: rawItem.title,
-          content_clean: contentClean.slice(0, 50000),
+          content_clean: effectiveContent.slice(0, 50000),
           content_excerpt: excerpt,
           language,
           word_count: wordCount,

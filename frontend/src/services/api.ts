@@ -124,7 +124,7 @@ export const collectionPlanService = {
   ...collectionPlansService,
   getJobs: (planId: string) => api.get(`/collection/jobs/${planId}`),
   getRawItems: (planId: string, page = 1, limit = 15) =>
-    api.get(`/etl/plan/${planId}/raw-items`, { params: { page, limit } }),
+    api.get(`/collection-plans/${planId}/raw-items`, { params: { page, limit } }),
   addSource: (planId: string, data: any) =>
     api.post(`/collection-plans/${planId}/sources`, data),
   removeSource: (sourceId: string) =>
@@ -147,9 +147,9 @@ export const collectionService = {
 // --- 7. RAW ITEMS ---
 export const rawItemsService = {
   getByProject: (projectId: string, page = 1, limit = 20) =>
-    api.get(`/etl/project/${projectId}/raw-items`, { params: { page, limit } }),
+    api.get(`/projects/${projectId}/raw-items`, { params: { page, limit } }),
   getByPlan: (planId: string) =>
-    api.get(`/etl/plan/${planId}/raw-items`),
+    api.get(`/collection-plans/${planId}/raw-items`),
 };
 
 // --- 8. PROCESSING (Sprint 4) ---

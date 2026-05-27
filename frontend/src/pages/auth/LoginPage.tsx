@@ -12,7 +12,6 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
     setLoading(true);
     try {
       const res = await api.post('/auth/login', form);
@@ -78,7 +77,7 @@ export default function LoginPage() {
               <input
                 type="email"
                 value={form.email}
-                onChange={e => setForm({ ...form, email: e.target.value })}
+                onChange={e => { setForm({ ...form, email: e.target.value }); setError(''); }}
                 className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-slate-500"
                 placeholder="vous@exemple.com"
                 required
@@ -89,7 +88,7 @@ export default function LoginPage() {
               <input
                 type="password"
                 value={form.mot_de_passe}
-                onChange={e => setForm({ ...form, mot_de_passe: e.target.value })}
+                onChange={e => { setForm({ ...form, mot_de_passe: e.target.value }); setError(''); }}
                 className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-slate-500"
                 placeholder="••••••••"
                 required

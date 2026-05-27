@@ -19,93 +19,100 @@ export class AiEnrichmentService {
 
     const items = await this.prisma.processedItem.findMany({
       where: { project_id: projectId },
-      include: {
-        raw_item: {
-          select: { collection_plan_id: true },
-        },
-      },
+      include: { raw_item: { select: { collection_plan_id: true } } },
     });
 
     let processed = 0, skipped = 0, failed = 0;
 
-    for (const item of items) {
-      try {
-        const existing = await this.prisma.enrichedItem.findUnique({
-          where: { processed_item_id: item.id },
-        });
-        if (existing) { skipped++; continue; }
+    // Traitement par lots de 5 pour éviter le timeout
+    const BATCH_SIZE = 5;
+    for (let i = 0; i < items.length; i += BATCH_SIZE) {
+      const batch = items.slice(i, i + BATCH_SIZE);
+      for (const item of batch) {
+        try {
+          const existing = await this.prisma.enrichedItem.findUnique({
+            where: { processed_item_id: item.id },
+          });
+          if (existing) { skipped++; continue; }
 
-        const planId = item.raw_item?.collection_plan_id || item.collection_plan_id;
-        let question = 'Quelle est la pertinence de cet article ?';
-        let hypothesis = '';
-        let perimeters: string[] = [];
+          const planId = item.raw_item?.collection_plan_id || item.collection_plan_id;
+          let question = 'Quelle est la pertinence de cet article ?';
+          let hypothesis = '';
+          let perimeters: string[] = [];
 
-        if (planId) {
-          const plan = await this.prisma.collectionPlan.findUnique({
-            where: { id: planId },
-            include: {
-              hypothesis: {
-                include: {
-                  axis: { include: { objective: { include: { project: { include: { perimeters: true } } } } } },
+          if (planId) {
+            const plan = await this.prisma.collectionPlan.findUnique({
+              where: { id: planId },
+              include: {
+                hypothesis: {
+                  include: {
+                    axis: { include: { objective: { include: { project: { include: { perimeters: true } } } } } },
+                  },
                 },
               },
+            });
+            if (plan) {
+              question = plan.question;
+              hypothesis = plan.hypothesis?.content || '';
+              perimeters = plan.hypothesis?.axis?.objective?.project?.perimeters?.map(p => p.name || '').filter(Boolean) || [];
+            }
+          }
+
+          const prompt = buildEnrichmentPrompt({
+            question,
+            hypothesis,
+            perimeters,
+            content: item.content_clean || item.content_excerpt || '',
+            title: item.title || '',
+          });
+
+          const raw = await this.llm.generate(prompt);
+          const parsed = this.llm.parseJsonResponse(raw);
+          if (!parsed) { failed++; continue; }
+
+          await this.prisma.enrichedItem.create({
+            data: {
+              processed_item_id: item.id,
+              project_id: projectId,
+              collection_plan_id: planId || null,
+              hypothesis_id: null,
+              answer: parsed.answer || null,
+              summary: parsed.summary || null,
+              entities: parsed.entities || [],
+              topics: parsed.topics || [],
+              sentiment: (() => {
+                const s = (parsed.sentiment || 'NEUTRE').toUpperCase();
+                if (s.includes('POSIT')) return 'POSITIF';
+                if (s.includes('NEGAT')) return 'NEGATIF';
+                return 'NEUTRE';
+              })(),
+              relevance_score: parsed.relevance_score || null,
+              hypothesis_impact: parsed.hypothesis_impact || 'OPEN',
+              confidence_score: parsed.confidence_score || null,
+              raw_response: parsed,
+              model_used: process.env.OLLAMA_MODEL || 'mistral',
+              prompt_version: '1.0',
             },
           });
-          if (plan) {
-            question = plan.question;
-            hypothesis = plan.hypothesis?.content || '';
-            perimeters = plan.hypothesis?.axis?.objective?.project?.perimeters?.map(p => p.name || '').filter(Boolean) || [];
+
+          if (planId) {
+            const plan = await this.prisma.collectionPlan.findUnique({
+              where: { id: planId },
+              select: { hypothesis_id: true },
+            });
+            if (plan?.hypothesis_id) {
+              await this.updateHypothesisEvaluation(plan.hypothesis_id, projectId, parsed.hypothesis_impact);
+            }
           }
+
+          processed++;
+          this.logger.log(`Enrichi ${processed}/${items.length - skipped}`);
+        } catch (err) {
+          this.logger.error(`Error item ${item.id}: ${err.message}`);
+          failed++;
         }
-
-        const prompt = buildEnrichmentPrompt({
-          question,
-          hypothesis,
-          perimeters,
-          content: item.content_clean || item.content_excerpt || '',
-          title: item.title || '',
-        });
-
-        const raw = await this.llm.generate(prompt);
-        const parsed = this.llm.parseJsonResponse(raw);
-
-        if (!parsed) { failed++; continue; }
-
-        await this.prisma.enrichedItem.create({
-          data: {
-            processed_item_id: item.id,
-            project_id: projectId,
-            collection_plan_id: planId || null,
-            hypothesis_id: null,
-            answer: parsed.answer || null,
-            summary: parsed.summary || null,
-            entities: parsed.entities || [],
-            topics: parsed.topics || [],
-            sentiment: parsed.sentiment || 'NEUTRE',
-            relevance_score: parsed.relevance_score || null,
-            hypothesis_impact: parsed.hypothesis_impact || 'OPEN',
-            confidence_score: parsed.confidence_score || null,
-            raw_response: parsed,
-            model_used: process.env.OLLAMA_MODEL || 'mistral',
-            prompt_version: '1.0',
-          },
-        });
-
-        if (planId) {
-          const plan = await this.prisma.collectionPlan.findUnique({
-            where: { id: planId },
-            select: { hypothesis_id: true },
-          });
-          if (plan?.hypothesis_id) {
-            await this.updateHypothesisEvaluation(plan.hypothesis_id, projectId, parsed.hypothesis_impact);
-          }
-        }
-
-        processed++;
-      } catch (err) {
-        this.logger.error(`Error enriching item ${item.id}: ${err.message}`);
-        failed++;
       }
+      this.logger.log(`Batch ${Math.floor(i/BATCH_SIZE)+1} terminé — ${processed} traités`);
     }
 
     await this.prisma.aiEnrichmentJob.update({
@@ -176,7 +183,6 @@ export class AiEnrichmentService {
         if (plan.hypothesis_id) {
           await this.updateHypothesisEvaluation(plan.hypothesis_id, item.project_id, parsed.hypothesis_impact);
         }
-
         processed++;
       } catch (err) {
         failed++;
@@ -224,13 +230,20 @@ export class AiEnrichmentService {
       if (item.relevance_score) totalRelevance += item.relevance_score;
     }
 
-    return { total, sentiments, impacts, avg_relevance: total > 0 ? totalRelevance / total : 0 };
+    return {
+      total,
+      total_enriched: total,
+      avg_relevance: total > 0 ? Math.round((totalRelevance / total) * 100) / 100 : 0,
+      avg_confidence: 0,
+      model_used: process.env.OLLAMA_MODEL || 'mistral',
+      sentiments,
+      impacts,
+      by_impact: impacts,
+    };
   }
 
   private async updateHypothesisEvaluation(hypothesisId: string, projectId: string, impact: string) {
-    const existing = await this.prisma.hypothesisEvaluation.findUnique({ where: { hypothesis_id: hypothesisId } });
     const enriched = await this.prisma.enrichedItem.findMany({ where: { hypothesis_id: hypothesisId } });
-
     const support_count = enriched.filter(e => e.hypothesis_impact === 'SUPPORTED').length;
     const against_count = enriched.filter(e => e.hypothesis_impact === 'CONTRADICTED').length;
     const neutral_count = enriched.filter(e => ['OPEN', 'NEEDS_MORE_RESEARCH'].includes(e.hypothesis_impact || '')).length;
@@ -247,6 +260,7 @@ export class AiEnrichmentService {
 
     const avgConf = enriched.reduce((acc, e) => acc + (e.confidence_score || 0), 0) / (evidence_count || 1);
 
+    const existing = await this.prisma.hypothesisEvaluation.findUnique({ where: { hypothesis_id: hypothesisId } });
     if (existing) {
       await this.prisma.hypothesisEvaluation.update({
         where: { hypothesis_id: hypothesisId },
