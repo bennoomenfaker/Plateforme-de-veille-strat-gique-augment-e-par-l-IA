@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
@@ -92,9 +92,80 @@ export class UploadService {
   }
 
   async getUploadsByPlan(planId: string, userId: string) {
+    await this.assertPlanAccess(planId, userId);
     return this.prisma.rawItem.findMany({
       where: { collection_plan_id: planId, source_type: 'UPLOAD' },
       orderBy: { fetched_at: 'desc' },
     });
+  }
+
+  async deleteUpload(rawItemId: string, userId: string) {
+    const rawItem = await this.prisma.rawItem.findUnique({
+      where: { id: rawItemId },
+      include: {
+        processed_item: true,
+      },
+    });
+
+    if (!rawItem) throw new NotFoundException('Document introuvable');
+    if (rawItem.source_type !== 'UPLOAD') {
+      throw new BadRequestException('Seuls les PDF uploadés peuvent être supprimés');
+    }
+
+    await this.assertPlanAccess(rawItem.collection_plan_id, userId);
+
+    const processedId = rawItem.processed_item?.id;
+
+    if (processedId) {
+      await this.prisma.enrichedItem.deleteMany({
+        where: { processed_item_id: processedId },
+      });
+      await this.prisma.processedItem.delete({ where: { id: processedId } });
+    }
+
+    if (rawItem.file_path) {
+      try {
+        if (fs.existsSync(rawItem.file_path)) fs.unlinkSync(rawItem.file_path);
+      } catch {
+        // Fichier déjà absent sur disque
+      }
+    }
+
+    await this.prisma.rawItem.delete({ where: { id: rawItemId } });
+
+    return { message: 'PDF supprimé avec succès', id: rawItemId };
+  }
+
+  private async assertPlanAccess(planId: string, userId: string) {
+    const plan = await this.prisma.collectionPlan.findUnique({
+      where: { id: planId },
+      include: {
+        hypothesis: {
+          include: {
+            axis: {
+              include: {
+                objective: {
+                  include: {
+                    project: {
+                      include: { organisation: { include: { members: true } } },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!plan) throw new NotFoundException('Plan de collecte introuvable');
+
+    const project = plan.hypothesis.axis.objective.project;
+    const hasAccess =
+      project.owner_user_id === userId ||
+      project.organisation?.members.some(
+        (m) => m.user_id === userId && m.statut === 'ACTIF',
+      );
+
+    if (!hasAccess) throw new ForbiddenException('Accès refusé');
   }
 }

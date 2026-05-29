@@ -96,7 +96,7 @@ export default function AdminPage() {
     { key: 'users', label: 'Utilisateurs', icon: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z' },
     { key: 'organisations', label: 'Organisations', icon: 'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4' },
     { key: 'logs', label: 'Logs', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' },
-    { key: 'pipeline', label: 'Pipeline ETL', icon: 'M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15' },
+    { key: 'pipeline', label: 'Pipeline données', icon: 'M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15' },
   ];
 
   if (!isLoggedIn) {
@@ -239,12 +239,13 @@ export default function AdminPage() {
           <div>
             <p className="text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: '#6366f1' }}>Administration</p>
             <h1 className="text-2xl font-bold text-white mb-8">Vue globale</h1>
-            <div className="grid grid-cols-4 gap-4 mb-8">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
               {[
                 { label: 'Utilisateurs', value: dashboard.stats?.totalUsers, color: '#60a5fa', bg: 'rgba(59,130,246,0.1)', border: 'rgba(59,130,246,0.2)' },
                 { label: 'Organisations', value: dashboard.stats?.totalOrgs, color: '#a78bfa', bg: 'rgba(139,92,246,0.1)', border: 'rgba(139,92,246,0.2)' },
                 { label: 'Projets', value: dashboard.stats?.totalProjects, color: '#34d399', bg: 'rgba(16,185,129,0.1)', border: 'rgba(16,185,129,0.2)' },
-                { label: 'Articles collectés', value: dashboard.stats?.totalRawData, color: '#fb923c', bg: 'rgba(251,146,60,0.1)', border: 'rgba(251,146,60,0.2)' },
+                { label: 'Items collectés', value: dashboard.stats?.totalRawItems ?? dashboard.stats?.totalRawData, color: '#fb923c', bg: 'rgba(251,146,60,0.1)', border: 'rgba(251,146,60,0.2)' },
+                { label: 'Items enrichis IA', value: dashboard.stats?.totalEnriched ?? 0, color: '#a78bfa', bg: 'rgba(139,92,246,0.1)', border: 'rgba(139,92,246,0.2)' },
               ].map(s => (
                 <div key={s.label} className="rounded-2xl p-5" style={{ background: s.bg, border: `1px solid ${s.border}` }}>
                   <p className="text-3xl font-bold mb-1" style={{ color: s.color }}>{s.value ?? 0}</p>
@@ -406,17 +407,36 @@ export default function AdminPage() {
         {tab === 'pipeline' && pipeline && (
           <div>
             <p className="text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: '#6366f1' }}>Administration</p>
-            <h1 className="text-2xl font-bold text-white mb-8">Pipeline ETL</h1>
-            <div className="grid grid-cols-2 gap-4">
+            <h1 className="text-2xl font-bold text-white mb-2">Pipeline de données</h1>
+            <p className="text-sm mb-8" style={{ color: '#6b7280' }}>
+              Collecte → Traitement → Enrichissement IA (pipeline moderne)
+            </p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
               {[
-                { label: 'Total articles bruts', value: pipeline.pipeline?.totalRawData ?? 0, color: '#60a5fa', bg: 'rgba(59,130,246,0.1)', border: 'rgba(59,130,246,0.2)' },
+                { label: 'Items bruts (RawItem)', value: pipeline.pipeline?.totalRawItems ?? pipeline.pipeline?.totalRawData ?? 0, color: '#60a5fa', bg: 'rgba(59,130,246,0.1)', border: 'rgba(59,130,246,0.2)' },
                 { label: 'Collectés (24h)', value: pipeline.pipeline?.collectedLast24h ?? 0, color: '#34d399', bg: 'rgba(16,185,129,0.1)', border: 'rgba(16,185,129,0.2)' },
-                { label: 'Articles analysés', value: pipeline.pipeline?.totalAnalysed ?? 0, color: '#a78bfa', bg: 'rgba(139,92,246,0.1)', border: 'rgba(139,92,246,0.2)' },
-                { label: "En attente d'analyse", value: pipeline.pipeline?.pendingAnalysis ?? 0, color: '#fb923c', bg: 'rgba(251,146,60,0.1)', border: 'rgba(251,146,60,0.2)' },
+                { label: 'Items nettoyés', value: pipeline.pipeline?.totalProcessed ?? 0, color: '#a78bfa', bg: 'rgba(139,92,246,0.1)', border: 'rgba(139,92,246,0.2)' },
+                { label: 'Insights IA', value: pipeline.pipeline?.totalEnriched ?? pipeline.pipeline?.totalAnalysed ?? 0, color: '#f472b6', bg: 'rgba(244,114,182,0.1)', border: 'rgba(244,114,182,0.2)' },
+                { label: 'En attente traitement', value: pipeline.pipeline?.pendingProcessing ?? 0, color: '#fb923c', bg: 'rgba(251,146,60,0.1)', border: 'rgba(251,146,60,0.2)' },
+                { label: 'En attente enrichissement', value: pipeline.pipeline?.pendingEnrichment ?? pipeline.pipeline?.pendingAnalysis ?? 0, color: '#fbbf24', bg: 'rgba(251,191,36,0.1)', border: 'rgba(251,191,36,0.2)' },
+                { label: 'Jobs collecte actifs', value: pipeline.pipeline?.activeJobs ?? 0, color: '#22d3ee', bg: 'rgba(34,211,238,0.1)', border: 'rgba(34,211,238,0.2)' },
+                { label: 'Échecs collecte (24h)', value: pipeline.pipeline?.failedJobs24h ?? 0, color: '#f87171', bg: 'rgba(239,68,68,0.1)', border: 'rgba(239,68,68,0.2)' },
               ].map(s => (
                 <div key={s.label} className="rounded-2xl p-6" style={{ background: s.bg, border: `1px solid ${s.border}` }}>
-                  <p className="text-4xl font-bold mb-2" style={{ color: s.color }}>{s.value}</p>
-                  <p className="text-sm font-medium" style={{ color: s.color, opacity: 0.7 }}>{s.label}</p>
+                  <p className="text-3xl font-bold mb-2" style={{ color: s.color }}>{s.value}</p>
+                  <p className="text-xs font-medium" style={{ color: s.color, opacity: 0.7 }}>{s.label}</p>
+                </div>
+              ))}
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              {[
+                { label: 'Taux de traitement', value: `${pipeline.pipeline?.completionRate ?? 0}%`, color: '#34d399' },
+                { label: "Taux d'enrichissement IA", value: `${pipeline.pipeline?.enrichmentRate ?? 0}%`, color: '#a78bfa' },
+              ].map(s => (
+                <div key={s.label} className="rounded-2xl p-6 text-center"
+                  style={{ background: '#161b27', border: '1px solid #1e2535' }}>
+                  <p className="text-3xl font-bold mb-1" style={{ color: s.color }}>{s.value}</p>
+                  <p className="text-xs" style={{ color: '#6b7280' }}>{s.label}</p>
                 </div>
               ))}
             </div>

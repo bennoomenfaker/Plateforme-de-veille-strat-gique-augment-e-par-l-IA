@@ -187,6 +187,7 @@ export const processingService = {
 // --- 9. UPLOAD ---
 export const uploadService = {
   getByPlan: (planId: string) => api.get(`/uploads/plan/${planId}`),
+  deletePdf: (rawItemId: string) => api.delete(`/uploads/raw-item/${rawItemId}`),
   uploadPdf: (...args: [projectId: string, planId: string, file: File] | [planId: string, file: File]) => {
     const hasProjectId = args.length === 3;
     const projectId = hasProjectId ? args[0] : undefined;
@@ -294,6 +295,16 @@ export const alertsService = {
   markAsRead: (id: string) => api.patch(`/alertes/${id}/read`),
 };
 
+// --- 12b. ANALYSE (Sprint 7) ---
+export const analyseService = {
+  getDashboard: (projectId: string) => api.get(`/analyse/dashboard/${projectId}`),
+  getResults: (projectId: string, page = 1, limit = 20, sentiment?: string) =>
+    api.get(`/analyse/results/${projectId}`, {
+      params: { page, limit, sentiment: sentiment && sentiment !== 'TOUS' ? sentiment : undefined },
+    }),
+  getStats: (projectId: string) => api.get(`/analyse/stats/${projectId}`),
+};
+
 // --- 13. ADMIN ---
 export const adminService = {
   getDashboard: () => api.get('/admin/dashboard'),
@@ -318,8 +329,29 @@ export const adminService = {
 
 // --- 14. REPORTS ---
 export const reportsService = {
-  getReportUrl: (projectId: string) => `/api/reports/project/${projectId}/html`,
-  downloadReport: (projectId: string) => api.get(`/reports/project/${projectId}/download`, { responseType: 'blob' }),
+  openReportHtml: async (projectId: string) => {
+    const res = await api.get(`/reports/project/${projectId}/html`, {
+      responseType: 'blob',
+    });
+    const blob = new Blob([res.data], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank', 'noopener,noreferrer');
+    setTimeout(() => URL.revokeObjectURL(url), 120_000);
+  },
+  downloadReport: async (projectId: string) => {
+    const res = await api.get(`/reports/project/${projectId}/download`, {
+      responseType: 'blob',
+    });
+    const blob = new Blob([res.data], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `rapport-veille-${projectId}.html`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  },
 };
 
 // --- 15. FOLDERS ---

@@ -22,8 +22,23 @@ export class AiEnrichmentController {
     @Param('projectId') projectId: string,
     @Query('page') page = '1',
     @Query('limit') limit = '20',
+    @Query('hypothesis_id') hypothesisId?: string,
+    @Query('impact') impact?: string,
+    @Query('min_score') minScore?: string,
   ) {
-    return this.aiService.getEnrichedItems(projectId, parseInt(page), parseInt(limit));
+    return this.aiService.getEnrichedItems(projectId, parseInt(page), parseInt(limit), {
+      hypothesis_id: hypothesisId,
+      impact,
+      min_score: minScore != null ? parseFloat(minScore) : undefined,
+    });
+  }
+
+  @Get('projects/:projectId/enrichment-jobs')
+  getEnrichmentJobs(
+    @Param('projectId') projectId: string,
+    @Query('limit') limit = '10',
+  ) {
+    return this.aiService.getEnrichmentJobs(projectId, parseInt(limit, 10));
   }
 
   @Get('projects/:projectId/enrichment-stats')

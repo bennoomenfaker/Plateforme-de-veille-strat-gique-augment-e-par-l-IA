@@ -57,6 +57,7 @@ export default function CollectionPlanDetailPage() {
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadMsg, setUploadMsg] = useState('');
+  const [deletingPdfId, setDeletingPdfId] = useState<string | null>(null);
   const [showAddSource, setShowAddSource] = useState(false);
 
   const [newSource, setNewSource] = useState({
@@ -108,6 +109,22 @@ export default function CollectionPlanDetailPage() {
   const removeKeywordMutation = useMutation({
     mutationFn: (keywordId: string) => collectionPlanService.removeKeyword(keywordId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['collection-plan', planId] }),
+  });
+
+  const deletePdfMutation = useMutation({
+    mutationFn: (rawItemId: string) => uploadService.deletePdf(rawItemId),
+    onSuccess: async () => {
+      await Promise.all([
+        refetchUploads(),
+        refetchRaw(),
+        queryClient.invalidateQueries({ queryKey: ['raw-items', planId] }),
+      ]);
+      setUploadMsg('PDF supprimé avec succès');
+    },
+    onError: (e: any) => {
+      setUploadMsg(e.response?.data?.message || 'Erreur lors de la suppression');
+    },
+    onSettled: () => setDeletingPdfId(null),
   });
 
   // Handlers
@@ -197,6 +214,13 @@ export default function CollectionPlanDetailPage() {
     } finally {
       setUploading(false);
     }
+  };
+
+  const handleDeletePdf = (rawItemId: string, title?: string | null) => {
+    const label = title || 'ce PDF';
+    if (!confirm(`Supprimer « ${label} » ? Cette action est irréversible.`)) return;
+    setDeletingPdfId(rawItemId);
+    deletePdfMutation.mutate(rawItemId);
   };
 
   const formatDate = (d?: string) => {
@@ -1011,6 +1035,18 @@ export default function CollectionPlanDetailPage() {
                         style={{ background: 'rgba(251,191,36,0.1)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.2)' }}>
                         UPLOAD
                       </span>
+                      <button
+                        type="button"
+                        onClick={() => handleDeletePdf(item.id, item.title)}
+                        disabled={deletingPdfId === item.id}
+                        className="text-xs px-2.5 py-1 rounded-lg font-semibold shrink-0 transition"
+                        style={{
+                          color: '#f87171',
+                          border: '1px solid rgba(239,68,68,0.3)',
+                          opacity: deletingPdfId === item.id ? 0.5 : 1,
+                        }}>
+                        {deletingPdfId === item.id ? 'Suppression...' : 'Supprimer'}
+                      </button>
                     </div>
                   ))}
                 </div>

@@ -65,6 +65,19 @@ export class AnalyseService {
       
     }
 
+    const processedForSources = enrichedItems.length
+      ? await this.prisma.processedItem.findMany({
+          where: { id: { in: enrichedItems.map((i) => i.processed_item_id) } },
+          select: { id: true, source_name: true, source_type: true },
+        })
+      : [];
+    const processedById = Object.fromEntries(processedForSources.map((p) => [p.id, p]));
+    for (const item of enrichedItems) {
+      const proc = processedById[item.processed_item_id];
+      const src = proc?.source_name || proc?.source_type || 'Inconnu';
+      sourceMap[src] = (sourceMap[src] || 0) + 1;
+    }
+
     const topEntities = Object.entries(entityMap).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([name, count]) => ({ name, count }));
     const topTopics = Object.entries(topicMap).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([name, count]) => ({ name, count }));
     const topSources = Object.entries(sourceMap).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([name, count]) => ({ name, count }));
@@ -144,51 +157,90 @@ export class AnalyseService {
     if (filters.minRelevance) where.relevance_score = { gte: parseFloat(filters.minRelevance) };
     if (filters.impact) where.hypothesis_impact = filters.impact;
 
-    const [data, total] = await Promise.all([
+    const [items, total] = await Promise.all([
       this.prisma.enrichedItem.findMany({
         where,
         orderBy: { relevance_score: 'desc' },
-        skip, take: limit,
+        skip,
+        take: limit,
       }),
       this.prisma.enrichedItem.count({ where }),
     ]);
-    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
+
+    const processedIds = items.map((i) => i.processed_item_id);
+    const processedItems = processedIds.length
+      ? await this.prisma.processedItem.findMany({
+          where: { id: { in: processedIds } },
+          select: {
+            id: true,
+            title: true,
+            source_type: true,
+            source_name: true,
+            article_url: true,
+          },
+        })
+      : [];
+    const processedMap = Object.fromEntries(processedItems.map((p) => [p.id, p]));
+
+    const data = items.map((item) => {
+      const proc = processedMap[item.processed_item_id];
+      return {
+        ...item,
+        title: proc?.title ?? 'Sans titre',
+        source_type: proc?.source_type,
+        source_name: proc?.source_name,
+        processed_item: proc ?? null,
+      };
+    });
+
+    return { data, total, page, limit, totalPages: Math.ceil(total / limit) || 1 };
   }
 
   async getStats(projectId: string) {
     const items = await this.prisma.enrichedItem.findMany({ where: { project_id: projectId } });
     const total = items.length;
     const sentiments = { POSITIF: 0, NEGATIF: 0, NEUTRE: 0 };
+    const impacts: Record<string, number> = {};
     let totalRel = 0;
     for (const i of items) {
       if (i.sentiment && sentiments[i.sentiment] !== undefined) sentiments[i.sentiment]++;
+      if (i.hypothesis_impact) impacts[i.hypothesis_impact] = (impacts[i.hypothesis_impact] || 0) + 1;
       if (i.relevance_score) totalRel += i.relevance_score;
     }
-    return { total, ...sentiments, avg_relevance: total > 0 ? totalRel / total : 0 };
+    return {
+      total,
+      total_enriched: total,
+      POSITIF: sentiments.POSITIF,
+      NEGATIF: sentiments.NEGATIF,
+      NEUTRE: sentiments.NEUTRE,
+      sentiments,
+      by_impact: impacts,
+      avg_relevance: total > 0 ? Math.round((totalRel / total) * 100) / 100 : 0,
+    };
   }
 
   async analyseProject(projectId: string) {
-    const rawItems = await this.prisma.rawData.findMany({ where: { projectId: projectId } });
-    let analysed = 0;
-    for (const item of rawItems) {
-      const existing = await this.prisma.watchResult.findUnique({ where: { rawDataId: item.id } });
-      if (existing) continue;
-      const sentiment = this.detectSentiment(item.content);
-      const trend = this.detectTrend(item.content);
-      const keywords = this.extractKeywords(item.content);
-      await this.prisma.watchResult.create({
-        data: {
-          title: item.title,
-          summary: item.content.substring(0, 300),
-          sentiment, trend, keywords,
-          sourceUrl: item.url,
-          rawDataId: item.id,
-          projectId: item.projectId,
-        },
-      });
-      analysed++;
-    }
-    return { analysed };
+    const enrichedIds = await this.prisma.enrichedItem.findMany({
+      select: { processed_item_id: true },
+    });
+    const ids = enrichedIds.map((e) => e.processed_item_id);
+
+    const pendingEnrichment = await this.prisma.processedItem.count({
+      where: {
+        project_id: projectId,
+        processing_status: 'DONE',
+        ...(ids.length > 0 ? { id: { notIn: ids } } : {}),
+      },
+    });
+
+    return {
+      analysed: 0,
+      pending_enrichment: pendingEnrichment,
+      message:
+        pendingEnrichment > 0
+          ? `${pendingEnrichment} item(s) en attente d'enrichissement IA — utilisez « Enrichissement IA »`
+          : 'Aucun item en attente — consultez les insights enrichis',
+    };
   }
 
   private detectSentiment(text: string): string {

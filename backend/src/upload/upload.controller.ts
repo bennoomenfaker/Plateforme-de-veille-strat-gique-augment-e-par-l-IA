@@ -2,6 +2,7 @@ import {
   Controller,
   Post,
   Get,
+  Delete,
   Param,
   UseGuards,
   UseInterceptors,
@@ -37,5 +38,13 @@ export class UploadController {
     @Request() req: any,
   ) {
     return this.uploadService.getUploadsByPlan(planId, req.user.userId);
+  }
+
+  @Delete('raw-item/:rawItemId')
+  async deleteUpload(
+    @Param('rawItemId') rawItemId: string,
+    @Request() req: any,
+  ) {
+    return this.uploadService.deleteUpload(rawItemId, req.user.userId);
   }
 }

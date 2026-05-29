@@ -197,17 +197,70 @@ export class AiEnrichmentService {
     return { job_id: job.id, processed, skipped, failed };
   }
 
-  async getEnrichedItems(projectId: string, page = 1, limit = 20) {
+  async getEnrichedItems(
+    projectId: string,
+    page = 1,
+    limit = 20,
+    filters?: { hypothesis_id?: string; impact?: string; min_score?: number },
+  ) {
     const skip = (page - 1) * limit;
-    const [data, total] = await Promise.all([
+    const where: any = { project_id: projectId };
+    if (filters?.hypothesis_id) where.hypothesis_id = filters.hypothesis_id;
+    if (filters?.impact) where.hypothesis_impact = filters.impact;
+    if (filters?.min_score != null) {
+      where.relevance_score = { gte: filters.min_score };
+    }
+
+    const [items, total] = await Promise.all([
       this.prisma.enrichedItem.findMany({
-        where: { project_id: projectId },
+        where,
         orderBy: { enriched_at: 'desc' },
-        skip, take: limit,
+        skip,
+        take: limit,
       }),
-      this.prisma.enrichedItem.count({ where: { project_id: projectId } }),
+      this.prisma.enrichedItem.count({ where }),
     ]);
-    return { data, total, page, limit };
+
+    const processedIds = items.map((i) => i.processed_item_id);
+    const processedItems = processedIds.length
+      ? await this.prisma.processedItem.findMany({
+          where: { id: { in: processedIds } },
+          select: {
+            id: true,
+            title: true,
+            source_type: true,
+            source_name: true,
+            source_url: true,
+            article_url: true,
+            content_excerpt: true,
+          },
+        })
+      : [];
+    const processedMap = Object.fromEntries(processedItems.map((p) => [p.id, p]));
+
+    const data = items.map((item) => ({
+      ...item,
+      title: processedMap[item.processed_item_id]?.title ?? null,
+      source_type: processedMap[item.processed_item_id]?.source_type ?? null,
+      source_name: processedMap[item.processed_item_id]?.source_name ?? null,
+      processed_item: processedMap[item.processed_item_id] ?? null,
+    }));
+
+    return {
+      data,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit) || 1,
+    };
+  }
+
+  async getEnrichmentJobs(projectId: string, limit = 10) {
+    return this.prisma.aiEnrichmentJob.findMany({
+      where: { project_id: projectId },
+      orderBy: { created_at: 'desc' },
+      take: limit,
+    });
   }
 
   async getHypothesisEvaluations(projectId: string) {
@@ -223,22 +276,37 @@ export class AiEnrichmentService {
     const sentiments = { POSITIF: 0, NEGATIF: 0, NEUTRE: 0 };
     const impacts: Record<string, number> = {};
     let totalRelevance = 0;
+    let totalConfidence = 0;
+    let confidenceCount = 0;
 
     for (const item of items) {
       if (item.sentiment && sentiments[item.sentiment] !== undefined) sentiments[item.sentiment]++;
       if (item.hypothesis_impact) impacts[item.hypothesis_impact] = (impacts[item.hypothesis_impact] || 0) + 1;
       if (item.relevance_score) totalRelevance += item.relevance_score;
+      if (item.confidence_score != null) {
+        totalConfidence += item.confidence_score;
+        confidenceCount++;
+      }
     }
+
+    const hypothesisEvaluations = await this.prisma.hypothesisEvaluation.findMany({
+      where: { project_id: projectId },
+    });
 
     return {
       total,
       total_enriched: total,
       avg_relevance: total > 0 ? Math.round((totalRelevance / total) * 100) / 100 : 0,
-      avg_confidence: 0,
+      avg_confidence:
+        confidenceCount > 0
+          ? Math.round((totalConfidence / confidenceCount) * 100) / 100
+          : 0,
+      hypotheses_evaluated: hypothesisEvaluations.length,
       model_used: process.env.OLLAMA_MODEL || 'mistral',
       sentiments,
       impacts,
       by_impact: impacts,
+      hypothesis_evaluations: hypothesisEvaluations,
     };
   }
 

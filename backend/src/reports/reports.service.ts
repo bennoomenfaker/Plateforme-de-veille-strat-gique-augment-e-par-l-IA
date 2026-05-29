@@ -5,6 +5,13 @@ import { PrismaService } from '../prisma/prisma.service';
 export class ReportsService {
   constructor(private prisma: PrismaService) {}
 
+  async getProjectName(projectId: string) {
+    return this.prisma.project.findUnique({
+      where: { id: projectId },
+      select: { nom: true },
+    });
+  }
+
   async generateProjectReport(projectId: string): Promise<string> {
     const project = await this.prisma.project.findUnique({
       where: { id: projectId },
@@ -39,10 +46,14 @@ export class ReportsService {
       where: { project_id: projectId },
     });
 
+    const totalEnrichedCount = await this.prisma.enrichedItem.count({
+      where: { project_id: projectId },
+    });
+
     const stats = {
       total_raw: await this.prisma.rawItem.count({ where: { project_id: projectId } }),
       total_processed: await this.prisma.processedItem.count({ where: { project_id: projectId } }),
-      total_enriched: enrichedItems.length,
+      total_enriched: totalEnrichedCount,
       avg_relevance: enrichedItems.length > 0
         ? enrichedItems.reduce((acc, i) => acc + (i.relevance_score ?? 0), 0) / enrichedItems.length
         : 0,

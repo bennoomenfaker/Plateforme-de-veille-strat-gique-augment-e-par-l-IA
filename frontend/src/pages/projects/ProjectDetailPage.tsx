@@ -100,10 +100,12 @@ export default function ProjectDetailPage() {
     setAnalysing(true); setAnalyseMsg('');
     try {
       const res = await api.post(`/analyse/project/${id}`);
-      setAnalyseMsg(`${res.data.analysed} articles analysés`);
-      await refetchResults(); await refetchStats();
+      const msg = res.data.message || `${res.data.pending_enrichment ?? 0} item(s) en attente`;
+      setAnalyseMsg(msg);
+      await refetchResults();
+      await refetchStats();
     } catch {
-      setAnalyseMsg('Erreur lors de l analyse');
+      setAnalyseMsg('Erreur lors de la vérification');
     } finally {
       setAnalysing(false);
     }
@@ -265,7 +267,16 @@ export default function ProjectDetailPage() {
           Dashboard insights
         </Link>
 
-        {/* Analyser */}
+        {/* Sprint 7 — Analyse */}
+        <Link
+          to={`/analyse/${id}`}
+          className="text-sm font-semibold px-4 py-2 rounded-xl transition"
+          style={{ background: "rgba(34,211,238,0.15)", color: "#22d3ee", border: "1px solid rgba(34,211,238,0.3)" }}
+        >
+          Analyse stratégique
+        </Link>
+
+        {/* Vérifier pipeline IA */}
             {canCreateOrModify && (
               <div className="flex flex-col items-center">
                 <button
@@ -278,7 +289,7 @@ export default function ProjectDetailPage() {
                     opacity: analysing ? 0.5 : 1,
                   }}
                 >
-                  {analysing ? 'Analyse...' : 'Analyser'}
+                  {analysing ? 'Vérification...' : 'Vérifier pipeline IA'}
                 </button>
                 {analyseMsg && (
                   <span className="text-[10px] mt-1"
@@ -683,19 +694,20 @@ export default function ProjectDetailPage() {
                     <div key={r.id} className="px-5 py-4" style={{ borderBottom: '1px solid #1e2535' }}>
                       <div className="flex items-start justify-between gap-3 mb-1.5">
                         <p className="text-sm font-medium text-white leading-snug line-clamp-2" style={{ flex: 1 }}>
-                          {r.title}
+                          {r.title ?? r.processed_item?.title ?? 'Sans titre'}
                         </p>
                         <div className="flex items-center gap-1.5 shrink-0">
-                          <span className="text-xs font-bold" style={{ color: trendColor(r.trend) }}>
-                            {trendIcon(r.trend)}
-                          </span>
-                          <span className="text-xs px-2 py-0.5 rounded-full font-semibold"
-                            style={sentimentStyle(r.sentiment)}>
-                            {r.sentiment}
-                          </span>
+                          {r.sentiment && (
+                            <span className="text-xs px-2 py-0.5 rounded-full font-semibold"
+                              style={sentimentStyle(r.sentiment)}>
+                              {r.sentiment}
+                            </span>
+                          )}
                         </div>
                       </div>
-                      <p className="text-xs line-clamp-1" style={{ color: '#6b7280' }}>{r.summary}</p>
+                      <p className="text-xs line-clamp-2" style={{ color: '#6b7280' }}>
+                        {r.summary ?? r.answer ?? '—'}
+                      </p>
                     </div>
                   ))
                 )}

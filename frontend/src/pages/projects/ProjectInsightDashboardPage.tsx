@@ -25,9 +25,11 @@ const TOOLTIP_STYLE = {
 
 export default function ProjectInsightDashboardPage() {
   const { id: projectId } = useParams<{ id: string }>();
-  const [activeTab, setActiveTab] = useState<'overview' | 'hypotheses' | 'feed'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'hypotheses' | 'feed' | 'synthese'>('overview');
   const [sourceFilter, setSourceFilter] = useState('ALL');
   const [minScore, setMinScore] = useState(0);
+  const [exporting, setExporting] = useState<'view' | 'download' | null>(null);
+  const [exportError, setExportError] = useState('');
 
   // ── Queries ────────────────────────────────────────────────────────────────
 
@@ -60,6 +62,38 @@ export default function ProjectInsightDashboardPage() {
     queryFn:  () => aiEnrichmentService.getHypothesisEvaluations(projectId!).then(r => r.data),
     enabled:  !!projectId,
   });
+
+  const { data: enrichmentJobs } = useQuery({
+    queryKey: ['enrichment-jobs', projectId],
+    queryFn:  () => aiEnrichmentService.getJobs(projectId!, 8).then(r => r.data),
+    enabled:  !!projectId,
+  });
+
+  const handleExportView = async () => {
+    if (!projectId) return;
+    setExportError('');
+    setExporting('view');
+    try {
+      await reportsService.openReportHtml(projectId);
+    } catch {
+      setExportError('Impossible d\'ouvrir le rapport. Vérifiez votre connexion et réessayez.');
+    } finally {
+      setExporting(null);
+    }
+  };
+
+  const handleExportDownload = async () => {
+    if (!projectId) return;
+    setExportError('');
+    setExporting('download');
+    try {
+      await reportsService.downloadReport(projectId);
+    } catch {
+      setExportError('Impossible de télécharger le rapport.');
+    } finally {
+      setExporting(null);
+    }
+  };
 
   // ── Calculs ────────────────────────────────────────────────────────────────
 
@@ -117,6 +151,33 @@ export default function ProjectInsightDashboardPage() {
     .sort((a: any, b: any) => (b.relevance_score ?? 0) - (a.relevance_score ?? 0))
     .slice(0, 5);
 
+  const supportedCount = evals.filter((e: any) => e.status === 'SUPPORTED').length;
+  const contradictedCount = evals.filter((e: any) => e.status === 'CONTRADICTED').length;
+  const completionPct = procStats?.total_raw
+    ? Math.round(((procStats?.total_processed ?? 0) / procStats.total_raw) * 100)
+    : 0;
+  const enrichmentPct = procStats?.total_processed
+    ? Math.round(((aiStats?.total_enriched ?? 0) / procStats.total_processed) * 100)
+    : 0;
+
+  const syntheseLines: string[] = [];
+  if ((aiStats?.total_enriched ?? 0) === 0) {
+    syntheseLines.push('Aucun insight IA généré — lancez l\'enrichissement depuis la page dédiée.');
+  } else {
+    syntheseLines.push(
+      `${aiStats?.total_enriched ?? 0} insight(s) produits pour ${Math.round((aiStats?.avg_relevance ?? 0) * 100)}% de pertinence moyenne.`,
+    );
+    if (supportedCount > 0) {
+      syntheseLines.push(`${supportedCount} hypothèse(s) sont actuellement supportées par les preuves collectées.`);
+    }
+    if (contradictedCount > 0) {
+      syntheseLines.push(`${contradictedCount} hypothèse(s) sont contredites — une révision stratégique est recommandée.`);
+    }
+    if ((procStats?.pending ?? 0) > 0) {
+      syntheseLines.push(`${procStats.pending} item(s) restent en attente de traitement (collecte → nettoyage).`);
+    }
+  }
+
   const cardStyle: React.CSSProperties = {
     background: '#161b27', border: '1px solid #1e2535', borderRadius: '1rem',
   };
@@ -163,17 +224,41 @@ export default function ProjectInsightDashboardPage() {
                        border: '1px solid rgba(16,185,129,0.3)' }}>
               Données nettoyées
             </Link>
-            <a
-              href={reportsService.getReportUrl(projectId!)}
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              type="button"
+              onClick={handleExportView}
+              disabled={!!exporting}
               className="text-sm font-semibold px-4 py-2 rounded-xl transition"
-              style={{ background: 'rgba(251,191,36,0.15)', color: '#fbbf24',
-                       border: '1px solid rgba(251,191,36,0.3)' }}>
-              Exporter le rapport
-            </a>
+              style={{
+                background: 'rgba(251,191,36,0.15)', color: '#fbbf24',
+                border: '1px solid rgba(251,191,36,0.3)',
+                opacity: exporting ? 0.6 : 1,
+                cursor: exporting ? 'not-allowed' : 'pointer',
+              }}>
+              {exporting === 'view' ? 'Ouverture...' : 'Voir le rapport'}
+            </button>
+            <button
+              type="button"
+              onClick={handleExportDownload}
+              disabled={!!exporting}
+              className="text-sm font-semibold px-4 py-2 rounded-xl transition"
+              style={{
+                background: 'rgba(234,88,12,0.15)', color: '#fb923c',
+                border: '1px solid rgba(234,88,12,0.3)',
+                opacity: exporting ? 0.6 : 1,
+                cursor: exporting ? 'not-allowed' : 'pointer',
+              }}>
+              {exporting === 'download' ? 'Téléchargement...' : 'Télécharger HTML'}
+            </button>
           </div>
         </div>
+
+        {exportError && (
+          <div className="mb-4 px-4 py-3 rounded-xl text-sm"
+            style={{ background: 'rgba(239,68,68,0.1)', color: '#f87171', border: '1px solid rgba(239,68,68,0.2)' }}>
+            {exportError}
+          </div>
+        )}
 
         {/* KPIs */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
@@ -208,6 +293,7 @@ export default function ProjectInsightDashboardPage() {
             { key: 'overview',   label: 'Vue générale'    },
             { key: 'hypotheses', label: 'Hypothèses'       },
             { key: 'feed',       label: "Flux d'insights"  },
+            { key: 'synthese',   label: 'Synthèse & jobs'  },
           ].map(tab => (
             <button key={tab.key}
               onClick={() => setActiveTab(tab.key as any)}
@@ -480,6 +566,75 @@ export default function ProjectInsightDashboardPage() {
                 </div>
               ))
             )}
+          </div>
+        )}
+
+        {/* ════ TAB: SYNTHÈSE ════ */}
+        {activeTab === 'synthese' && (
+          <div className="space-y-6">
+            <div style={{ ...cardStyle, padding: '1.5rem' }}>
+              <p className="text-xs font-bold uppercase tracking-widest mb-4"
+                style={{ color: '#4b5568' }}>Synthèse décisionnelle</p>
+              <ul className="space-y-3">
+                {syntheseLines.map((line, i) => (
+                  <li key={i} className="flex gap-3 text-sm" style={{ color: '#d1d5db' }}>
+                    <span style={{ color: '#60a5fa' }}>•</span>
+                    <span>{line}</span>
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-6 grid grid-cols-2 gap-4">
+                <div className="p-4 rounded-xl" style={{ background: '#0f1117' }}>
+                  <p className="text-[10px] uppercase tracking-widest mb-1" style={{ color: '#6b7280' }}>Taux de traitement</p>
+                  <p className="text-2xl font-bold" style={{ color: '#34d399' }}>{completionPct}%</p>
+                </div>
+                <div className="p-4 rounded-xl" style={{ background: '#0f1117' }}>
+                  <p className="text-[10px] uppercase tracking-widest mb-1" style={{ color: '#6b7280' }}>Taux d'enrichissement IA</p>
+                  <p className="text-2xl font-bold" style={{ color: '#a78bfa' }}>{enrichmentPct}%</p>
+                </div>
+              </div>
+              <div className="mt-5 flex flex-wrap gap-3">
+                <Link to={`/analyse/${projectId}`}
+                  className="text-sm font-semibold px-4 py-2 rounded-xl"
+                  style={{ background: 'rgba(59,130,246,0.15)', color: '#60a5fa', border: '1px solid rgba(59,130,246,0.3)' }}>
+                  Analyse approfondie (Sprint 7) →
+                </Link>
+              </div>
+            </div>
+
+            <div style={{ ...cardStyle, overflow: 'hidden' }}>
+              <div className="px-5 py-4" style={{ borderBottom: '1px solid #1e2535' }}>
+                <h2 className="text-sm font-bold text-white">Derniers jobs d'enrichissement IA</h2>
+              </div>
+              {!enrichmentJobs?.length ? (
+                <div className="py-10 text-center text-sm" style={{ color: '#6b7280' }}>
+                  Aucun job d'enrichissement enregistré
+                </div>
+              ) : (
+                enrichmentJobs.map((job: any, i: number) => (
+                  <div key={job.id} className="px-5 py-4 flex items-center justify-between gap-4"
+                    style={{ borderBottom: i < enrichmentJobs.length - 1 ? '1px solid #1e2535' : 'none' }}>
+                    <div>
+                      <p className="text-sm font-medium text-white">
+                        {job.status} · {job.processed ?? 0} traités · {job.failed ?? 0} erreurs
+                      </p>
+                      <p className="text-xs mt-0.5" style={{ color: '#6b7280' }}>
+                        {job.created_at
+                          ? new Date(job.created_at).toLocaleString('fr-FR')
+                          : '—'}
+                      </p>
+                    </div>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                      style={{
+                        background: job.status === 'DONE' ? 'rgba(16,185,129,0.1)' : 'rgba(251,191,36,0.1)',
+                        color: job.status === 'DONE' ? '#34d399' : '#fbbf24',
+                      }}>
+                      {job.status}
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         )}
 

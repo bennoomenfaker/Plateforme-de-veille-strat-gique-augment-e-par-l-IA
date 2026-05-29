@@ -12,7 +12,9 @@ export class AdminService {
       totalOrgs,
       totalProjects,
       totalSources,
-      totalRawData,
+      totalRawItems,
+      totalProcessed,
+      totalEnriched,
       totalAlerts,
       recentUsers,
     ] = await Promise.all([
@@ -20,7 +22,9 @@ export class AdminService {
       this.prisma.organisation.count(),
       this.prisma.project.count(),
       this.prisma.source.count(),
-      this.prisma.rawData.count(),
+      this.prisma.rawItem.count(),
+      this.prisma.processedItem.count({ where: { processing_status: 'DONE' } }),
+      this.prisma.enrichedItem.count(),
       this.prisma.alert.count(),
       this.prisma.user.findMany({
         orderBy: { created_at: 'desc' },
@@ -50,8 +54,12 @@ export class AdminService {
         totalOrgs,
         totalProjects,
         totalSources,
-        totalRawData,
+        totalRawItems,
+        totalProcessed,
+        totalEnriched,
         totalAlerts,
+        // Legacy (anciens projets ETL)
+        totalRawData: totalRawItems,
       },
       recentUsers,
     };
@@ -237,23 +245,64 @@ export class AdminService {
     };
   }
 
-  // ─── Supervision pipeline ETL ─────────────────────────────────────────────
+  // ─── Supervision pipeline (collecte → traitement → enrichissement IA) ───────
   async getPipelineStatus() {
-    const [totalRaw, last24h, totalResults, pendingAnalysis] = await Promise.all([
-      this.prisma.rawData.count(),
-      this.prisma.rawData.count({
-        where: { createdAt: { gte: new Date(Date.now() - 24 * 3600000) } },
+    const since24h = new Date(Date.now() - 24 * 3600000);
+
+    const [
+      totalRawItems,
+      collectedLast24h,
+      totalProcessed,
+      pendingProcessing,
+      totalEnriched,
+      pendingEnrichment,
+      activeJobs,
+      failedJobs24h,
+    ] = await Promise.all([
+      this.prisma.rawItem.count(),
+      this.prisma.rawItem.count({ where: { fetched_at: { gte: since24h } } }),
+      this.prisma.processedItem.count({ where: { processing_status: 'DONE' } }),
+      this.prisma.rawItem.count({ where: { processed_item: null } }),
+      this.prisma.enrichedItem.count(),
+      (async () => {
+        const enrichedIds = await this.prisma.enrichedItem.findMany({
+          select: { processed_item_id: true },
+        });
+        const ids = enrichedIds.map((e) => e.processed_item_id);
+        return this.prisma.processedItem.count({
+          where: {
+            processing_status: 'DONE',
+            ...(ids.length > 0 ? { id: { notIn: ids } } : {}),
+          },
+        });
+      })(),
+      this.prisma.collectionJob.count({ where: { status: 'RUNNING' } }),
+      this.prisma.collectionJob.count({
+        where: { status: 'FAILED', created_at: { gte: since24h } },
       }),
-      this.prisma.watchResult.count(),
-      this.prisma.rawData.count({ where: { watchResult: null } }),
     ]);
+
+    const completionRate =
+      totalRawItems > 0 ? Math.round((totalProcessed / totalRawItems) * 100) : 0;
+    const enrichmentRate =
+      totalProcessed > 0 ? Math.round((totalEnriched / totalProcessed) * 100) : 0;
 
     return {
       pipeline: {
-        totalRawData:      totalRaw,
-        collectedLast24h:  last24h,
-        totalAnalysed:     totalResults,
-        pendingAnalysis,
+        totalRawItems,
+        collectedLast24h,
+        totalProcessed,
+        pendingProcessing,
+        totalEnriched,
+        pendingEnrichment,
+        activeJobs,
+        failedJobs24h,
+        completionRate,
+        enrichmentRate,
+        // Alias legacy pour compatibilité UI
+        totalRawData: totalRawItems,
+        totalAnalysed: totalEnriched,
+        pendingAnalysis: pendingEnrichment,
       },
     };
   }

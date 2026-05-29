@@ -311,6 +311,12 @@ export default function ProjectEnrichedItemsPage() {
                        border: '1px solid rgba(59,130,246,0.2)' }}>
               📊 Dashboard insights
             </Link>
+            <Link to={`/analyse/${projectId}`}
+              className="text-sm font-semibold px-4 py-2 rounded-xl transition"
+              style={{ background: 'rgba(34,211,238,0.1)', color: '#22d3ee',
+                       border: '1px solid rgba(34,211,238,0.2)' }}>
+              Analyse Sprint 7
+            </Link>
             <button
               onClick={() => enrichMut.mutate()}
               disabled={isRunning}
