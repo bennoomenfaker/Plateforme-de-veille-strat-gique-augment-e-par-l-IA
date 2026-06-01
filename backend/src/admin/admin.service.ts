@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -78,7 +82,7 @@ export class AdminService {
           nom: true,
           email: true,
           type_utilisateur: true,
-          statut: true,           // ✅ CORRECTION #7 : était manquant
+          statut: true, // ✅ CORRECTION #7 : était manquant
           created_at: true,
           memberships: {
             select: {
@@ -93,7 +97,15 @@ export class AdminService {
     return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
-  async updateUser(userId: string, data: { nom?: string; email?: string; statut?: string; type_utilisateur?: string }) {
+  async updateUser(
+    userId: string,
+    data: {
+      nom?: string;
+      email?: string;
+      statut?: string;
+      type_utilisateur?: string;
+    },
+  ) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('Utilisateur introuvable');
 
@@ -103,7 +115,9 @@ export class AdminService {
         ...(data.nom !== undefined ? { nom: data.nom } : {}),
         ...(data.email !== undefined ? { email: data.email } : {}),
         ...(data.statut !== undefined ? { statut: data.statut as any } : {}),
-        ...(data.type_utilisateur !== undefined ? { type_utilisateur: data.type_utilisateur as any } : {}),
+        ...(data.type_utilisateur !== undefined
+          ? { type_utilisateur: data.type_utilisateur as any }
+          : {}),
       },
       select: {
         id: true,
@@ -150,7 +164,11 @@ export class AdminService {
       include: {
         owner: { select: { id: true, nom: true, email: true } },
         members: {
-          include: { user: { select: { id: true, nom: true, email: true, statut: true } } },
+          include: {
+            user: {
+              select: { id: true, nom: true, email: true, statut: true },
+            },
+          },
         },
         _count: { select: { projects: true } },
       },
@@ -160,7 +178,9 @@ export class AdminService {
   }
 
   async updateOrganisation(orgId: string, data: { nom?: string }) {
-    const org = await this.prisma.organisation.findUnique({ where: { id: orgId } });
+    const org = await this.prisma.organisation.findUnique({
+      where: { id: orgId },
+    });
     if (!org) throw new NotFoundException('Organisation introuvable');
     return this.prisma.organisation.update({
       where: { id: orgId },
@@ -168,9 +188,15 @@ export class AdminService {
     });
   }
 
-  async updateOrganisationMemberRole(orgId: string, memberUserId: string, role: string) {
+  async updateOrganisationMemberRole(
+    orgId: string,
+    memberUserId: string,
+    role: string,
+  ) {
     if (role === 'PROPRIETAIRE') {
-      throw new BadRequestException('Impossible d\'assigner le rôle propriétaire via cette action');
+      throw new BadRequestException(
+        "Impossible d'assigner le rôle propriétaire via cette action",
+      );
     }
     const membre = await this.prisma.membreOrganisation.findFirst({
       where: { organisation_id: orgId, user_id: memberUserId },
@@ -183,7 +209,9 @@ export class AdminService {
   }
 
   async removeOrganisationMember(orgId: string, memberUserId: string) {
-    const org = await this.prisma.organisation.findUnique({ where: { id: orgId } });
+    const org = await this.prisma.organisation.findUnique({
+      where: { id: orgId },
+    });
     if (!org) throw new NotFoundException('Organisation introuvable');
     if (org.owner_id === memberUserId) {
       throw new NotFoundException('Impossible de supprimer le propriétaire');
@@ -236,8 +264,8 @@ export class AdminService {
       orderBy: { created_at: 'desc' },
     });
 
-    const active   = projects.filter(p => p.isActive).length;
-    const archived = projects.filter(p => !p.isActive).length;
+    const active = projects.filter((p) => p.isActive).length;
+    const archived = projects.filter((p) => !p.isActive).length;
 
     return {
       projects,
@@ -283,9 +311,13 @@ export class AdminService {
     ]);
 
     const completionRate =
-      totalRawItems > 0 ? Math.round((totalProcessed / totalRawItems) * 100) : 0;
+      totalRawItems > 0
+        ? Math.round((totalProcessed / totalRawItems) * 100)
+        : 0;
     const enrichmentRate =
-      totalProcessed > 0 ? Math.round((totalEnriched / totalProcessed) * 100) : 0;
+      totalProcessed > 0
+        ? Math.round((totalEnriched / totalProcessed) * 100)
+        : 0;
 
     return {
       pipeline: {

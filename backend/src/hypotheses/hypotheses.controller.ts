@@ -1,4 +1,14 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Request } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Put,
+  Delete,
+  Body,
+  Param,
+  UseGuards,
+  Request,
+} from '@nestjs/common';
 import { HypothesesService } from './hypotheses.service';
 import { JwtAuthGuard } from '../auth/jwt.guard';
 
@@ -8,8 +18,16 @@ export class HypothesesController {
   constructor(private readonly hypothesesService: HypothesesService) {}
 
   @Post()
-  create(@Param('axisId') axisId: string, @Body() body: any, @Request() req: any) {
-    return this.hypothesesService.createHypothesis(axisId, req.user.userId, body);
+  create(
+    @Param('axisId') axisId: string,
+    @Body() body: any,
+    @Request() req: any,
+  ) {
+    return this.hypothesesService.createHypothesis(
+      axisId,
+      req.user.userId,
+      body,
+    );
   }
 
   @Get()
@@ -18,7 +36,11 @@ export class HypothesesController {
   }
 
   @Put(':hypothesisId')
-  update(@Param('hypothesisId') id: string, @Body() body: any, @Request() req: any) {
+  update(
+    @Param('hypothesisId') id: string,
+    @Body() body: any,
+    @Request() req: any,
+  ) {
     return this.hypothesesService.updateHypothesis(id, req.user.userId, body);
   }
 

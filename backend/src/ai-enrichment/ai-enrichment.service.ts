@@ -14,7 +14,11 @@ export class AiEnrichmentService {
 
   async enrichProject(projectId: string): Promise<any> {
     const job = await this.prisma.aiEnrichmentJob.create({
-      data: { project_id: projectId, status: 'RUNNING', started_at: new Date() },
+      data: {
+        project_id: projectId,
+        status: 'RUNNING',
+        started_at: new Date(),
+      },
     });
 
     const items = await this.prisma.processedItem.findMany({
@@ -22,7 +26,9 @@ export class AiEnrichmentService {
       include: { raw_item: { select: { collection_plan_id: true } } },
     });
 
-    let processed = 0, skipped = 0, failed = 0;
+    let processed = 0,
+      skipped = 0,
+      failed = 0;
 
     // Traitement par lots de 5 pour éviter le timeout
     const BATCH_SIZE = 5;
@@ -33,9 +39,13 @@ export class AiEnrichmentService {
           const existing = await this.prisma.enrichedItem.findUnique({
             where: { processed_item_id: item.id },
           });
-          if (existing) { skipped++; continue; }
+          if (existing) {
+            skipped++;
+            continue;
+          }
 
-          const planId = item.raw_item?.collection_plan_id || item.collection_plan_id;
+          const planId =
+            item.raw_item?.collection_plan_id || item.collection_plan_id;
           let question = 'Quelle est la pertinence de cet article ?';
           let hypothesis = '';
           let perimeters: string[] = [];
@@ -46,7 +56,15 @@ export class AiEnrichmentService {
               include: {
                 hypothesis: {
                   include: {
-                    axis: { include: { objective: { include: { project: { include: { perimeters: true } } } } } },
+                    axis: {
+                      include: {
+                        objective: {
+                          include: {
+                            project: { include: { perimeters: true } },
+                          },
+                        },
+                      },
+                    },
                   },
                 },
               },
@@ -54,7 +72,10 @@ export class AiEnrichmentService {
             if (plan) {
               question = plan.question;
               hypothesis = plan.hypothesis?.content || '';
-              perimeters = plan.hypothesis?.axis?.objective?.project?.perimeters?.map(p => p.name || '').filter(Boolean) || [];
+              perimeters =
+                plan.hypothesis?.axis?.objective?.project?.perimeters
+                  ?.map((p) => p.name || '')
+                  .filter(Boolean) || [];
             }
           }
 
@@ -68,7 +89,10 @@ export class AiEnrichmentService {
 
           const raw = await this.llm.generate(prompt);
           const parsed = this.llm.parseJsonResponse(raw);
-          if (!parsed) { failed++; continue; }
+          if (!parsed) {
+            failed++;
+            continue;
+          }
 
           await this.prisma.enrichedItem.create({
             data: {
@@ -101,7 +125,11 @@ export class AiEnrichmentService {
               select: { hypothesis_id: true },
             });
             if (plan?.hypothesis_id) {
-              await this.updateHypothesisEvaluation(plan.hypothesis_id, projectId, parsed.hypothesis_impact);
+              await this.updateHypothesisEvaluation(
+                plan.hypothesis_id,
+                projectId,
+                parsed.hypothesis_impact,
+              );
             }
           }
 
@@ -112,12 +140,21 @@ export class AiEnrichmentService {
           failed++;
         }
       }
-      this.logger.log(`Batch ${Math.floor(i/BATCH_SIZE)+1} terminé — ${processed} traités`);
+      this.logger.log(
+        `Batch ${Math.floor(i / BATCH_SIZE) + 1} terminé — ${processed} traités`,
+      );
     }
 
     await this.prisma.aiEnrichmentJob.update({
       where: { id: job.id },
-      data: { status: 'DONE', finished_at: new Date(), total: items.length, processed, skipped, failed },
+      data: {
+        status: 'DONE',
+        finished_at: new Date(),
+        total: items.length,
+        processed,
+        skipped,
+        failed,
+      },
     });
 
     return { job_id: job.id, total: items.length, processed, skipped, failed };
@@ -139,15 +176,25 @@ export class AiEnrichmentService {
       include: { processed_item: true },
     });
 
-    let processed = 0, skipped = 0, failed = 0;
+    let processed = 0,
+      skipped = 0,
+      failed = 0;
 
     for (const raw of rawItems) {
-      if (!raw.processed_item) { skipped++; continue; }
+      if (!raw.processed_item) {
+        skipped++;
+        continue;
+      }
       const item = raw.processed_item;
 
       try {
-        const existing = await this.prisma.enrichedItem.findUnique({ where: { processed_item_id: item.id } });
-        if (existing) { skipped++; continue; }
+        const existing = await this.prisma.enrichedItem.findUnique({
+          where: { processed_item_id: item.id },
+        });
+        if (existing) {
+          skipped++;
+          continue;
+        }
 
         const prompt = buildEnrichmentPrompt({
           question: plan.question,
@@ -159,7 +206,10 @@ export class AiEnrichmentService {
 
         const rawResp = await this.llm.generate(prompt);
         const parsed = this.llm.parseJsonResponse(rawResp);
-        if (!parsed) { failed++; continue; }
+        if (!parsed) {
+          failed++;
+          continue;
+        }
 
         await this.prisma.enrichedItem.create({
           data: {
@@ -181,7 +231,11 @@ export class AiEnrichmentService {
         });
 
         if (plan.hypothesis_id) {
-          await this.updateHypothesisEvaluation(plan.hypothesis_id, item.project_id, parsed.hypothesis_impact);
+          await this.updateHypothesisEvaluation(
+            plan.hypothesis_id,
+            item.project_id,
+            parsed.hypothesis_impact,
+          );
         }
         processed++;
       } catch (err) {
@@ -191,7 +245,14 @@ export class AiEnrichmentService {
 
     await this.prisma.aiEnrichmentJob.update({
       where: { id: job.id },
-      data: { status: 'DONE', finished_at: new Date(), total: rawItems.length, processed, skipped, failed },
+      data: {
+        status: 'DONE',
+        finished_at: new Date(),
+        total: rawItems.length,
+        processed,
+        skipped,
+        failed,
+      },
     });
 
     return { job_id: job.id, processed, skipped, failed };
@@ -236,7 +297,9 @@ export class AiEnrichmentService {
           },
         })
       : [];
-    const processedMap = Object.fromEntries(processedItems.map((p) => [p.id, p]));
+    const processedMap = Object.fromEntries(
+      processedItems.map((p) => [p.id, p]),
+    );
 
     const data = items.map((item) => ({
       ...item,
@@ -271,7 +334,9 @@ export class AiEnrichmentService {
   }
 
   async getEnrichmentStats(projectId: string) {
-    const items = await this.prisma.enrichedItem.findMany({ where: { project_id: projectId } });
+    const items = await this.prisma.enrichedItem.findMany({
+      where: { project_id: projectId },
+    });
     const total = items.length;
     const sentiments = { POSITIF: 0, NEGATIF: 0, NEUTRE: 0 };
     const impacts: Record<string, number> = {};
@@ -280,8 +345,11 @@ export class AiEnrichmentService {
     let confidenceCount = 0;
 
     for (const item of items) {
-      if (item.sentiment && sentiments[item.sentiment] !== undefined) sentiments[item.sentiment]++;
-      if (item.hypothesis_impact) impacts[item.hypothesis_impact] = (impacts[item.hypothesis_impact] || 0) + 1;
+      if (item.sentiment && sentiments[item.sentiment] !== undefined)
+        sentiments[item.sentiment]++;
+      if (item.hypothesis_impact)
+        impacts[item.hypothesis_impact] =
+          (impacts[item.hypothesis_impact] || 0) + 1;
       if (item.relevance_score) totalRelevance += item.relevance_score;
       if (item.confidence_score != null) {
         totalConfidence += item.confidence_score;
@@ -289,14 +357,16 @@ export class AiEnrichmentService {
       }
     }
 
-    const hypothesisEvaluations = await this.prisma.hypothesisEvaluation.findMany({
-      where: { project_id: projectId },
-    });
+    const hypothesisEvaluations =
+      await this.prisma.hypothesisEvaluation.findMany({
+        where: { project_id: projectId },
+      });
 
     return {
       total,
       total_enriched: total,
-      avg_relevance: total > 0 ? Math.round((totalRelevance / total) * 100) / 100 : 0,
+      avg_relevance:
+        total > 0 ? Math.round((totalRelevance / total) * 100) / 100 : 0,
       avg_confidence:
         confidenceCount > 0
           ? Math.round((totalConfidence / confidenceCount) * 100) / 100
@@ -310,11 +380,23 @@ export class AiEnrichmentService {
     };
   }
 
-  private async updateHypothesisEvaluation(hypothesisId: string, projectId: string, impact: string) {
-    const enriched = await this.prisma.enrichedItem.findMany({ where: { hypothesis_id: hypothesisId } });
-    const support_count = enriched.filter(e => e.hypothesis_impact === 'SUPPORTED').length;
-    const against_count = enriched.filter(e => e.hypothesis_impact === 'CONTRADICTED').length;
-    const neutral_count = enriched.filter(e => ['OPEN', 'NEEDS_MORE_RESEARCH'].includes(e.hypothesis_impact || '')).length;
+  private async updateHypothesisEvaluation(
+    hypothesisId: string,
+    projectId: string,
+    impact: string,
+  ) {
+    const enriched = await this.prisma.enrichedItem.findMany({
+      where: { hypothesis_id: hypothesisId },
+    });
+    const support_count = enriched.filter(
+      (e) => e.hypothesis_impact === 'SUPPORTED',
+    ).length;
+    const against_count = enriched.filter(
+      (e) => e.hypothesis_impact === 'CONTRADICTED',
+    ).length;
+    const neutral_count = enriched.filter((e) =>
+      ['OPEN', 'NEEDS_MORE_RESEARCH'].includes(e.hypothesis_impact || ''),
+    ).length;
     const evidence_count = enriched.length;
 
     let status = 'OPEN';
@@ -326,17 +408,38 @@ export class AiEnrichmentService {
       else status = 'NEEDS_MORE_RESEARCH';
     }
 
-    const avgConf = enriched.reduce((acc, e) => acc + (e.confidence_score || 0), 0) / (evidence_count || 1);
+    const avgConf =
+      enriched.reduce((acc, e) => acc + (e.confidence_score || 0), 0) /
+      (evidence_count || 1);
 
-    const existing = await this.prisma.hypothesisEvaluation.findUnique({ where: { hypothesis_id: hypothesisId } });
+    const existing = await this.prisma.hypothesisEvaluation.findUnique({
+      where: { hypothesis_id: hypothesisId },
+    });
     if (existing) {
       await this.prisma.hypothesisEvaluation.update({
         where: { hypothesis_id: hypothesisId },
-        data: { status: status as any, confidence: avgConf, evidence_count, support_count, against_count, neutral_count, last_evaluated: new Date() },
+        data: {
+          status: status as any,
+          confidence: avgConf,
+          evidence_count,
+          support_count,
+          against_count,
+          neutral_count,
+          last_evaluated: new Date(),
+        },
       });
     } else {
       await this.prisma.hypothesisEvaluation.create({
-        data: { hypothesis_id: hypothesisId, project_id: projectId, status: status as any, confidence: avgConf, evidence_count, support_count, against_count, neutral_count },
+        data: {
+          hypothesis_id: hypothesisId,
+          project_id: projectId,
+          status: status as any,
+          confidence: avgConf,
+          evidence_count,
+          support_count,
+          against_count,
+          neutral_count,
+        },
       });
     }
   }

@@ -21,7 +21,11 @@ export class AnalyseController {
     @Query('minRelevance') minRelevance?: string,
     @Query('impact') impact?: string,
   ) {
-    return this.analyseService.getResults(id, parseInt(page), parseInt(limit), { sentiment, minRelevance, impact });
+    return this.analyseService.getResults(id, parseInt(page), parseInt(limit), {
+      sentiment,
+      minRelevance,
+      impact,
+    });
   }
 
   @Get('stats/:id')

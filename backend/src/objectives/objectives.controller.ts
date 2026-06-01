@@ -1,4 +1,14 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Request } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Put,
+  Delete,
+  Body,
+  Param,
+  UseGuards,
+  Request,
+} from '@nestjs/common';
 import { ObjectivesService } from './objectives.service';
 import { JwtAuthGuard } from '../auth/jwt.guard';
 
@@ -8,8 +18,16 @@ export class ObjectivesController {
   constructor(private readonly objectivesService: ObjectivesService) {}
 
   @Post()
-  create(@Param('projectId') projectId: string, @Body() body: any, @Request() req: any) {
-    return this.objectivesService.createObjective(projectId, req.user.userId, body);
+  create(
+    @Param('projectId') projectId: string,
+    @Body() body: any,
+    @Request() req: any,
+  ) {
+    return this.objectivesService.createObjective(
+      projectId,
+      req.user.userId,
+      body,
+    );
   }
 
   @Get()
@@ -18,8 +36,16 @@ export class ObjectivesController {
   }
 
   @Put(':objectiveId')
-  update(@Param('objectiveId') objectiveId: string, @Body() body: any, @Request() req: any) {
-    return this.objectivesService.updateObjective(objectiveId, req.user.userId, body);
+  update(
+    @Param('objectiveId') objectiveId: string,
+    @Body() body: any,
+    @Request() req: any,
+  ) {
+    return this.objectivesService.updateObjective(
+      objectiveId,
+      req.user.userId,
+      body,
+    );
   }
 
   @Delete(':objectiveId')

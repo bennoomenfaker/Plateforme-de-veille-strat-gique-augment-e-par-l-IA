@@ -1,4 +1,11 @@
-import { Controller, Get, Param, Res, UseGuards, Request } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  Res,
+  UseGuards,
+  Request,
+} from '@nestjs/common';
 import { Response } from 'express';
 import { ReportsService } from './reports.service';
 import { JwtAuthGuard } from '../auth/jwt.guard';
@@ -33,9 +40,14 @@ export class ReportsController {
     await this.orgAccess.assertProjectRead(projectId, req.user.userId);
     const project = await this.reportsService.getProjectName(projectId);
     const html = await this.reportsService.generateProjectReport(projectId);
-    const safeName = (project?.nom || 'projet').replace(/[^a-zA-Z0-9-_]/g, '-').slice(0, 60);
+    const safeName = (project?.nom || 'projet')
+      .replace(/[^a-zA-Z0-9-_]/g, '-')
+      .slice(0, 60);
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="rapport-veille-${safeName}.html"`);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="rapport-veille-${safeName}.html"`,
+    );
     res.send(html);
   }
 }

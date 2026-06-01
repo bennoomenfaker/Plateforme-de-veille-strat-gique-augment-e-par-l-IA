@@ -3,7 +3,7 @@ import {
   Get,
   Post,
   Put,
-  Patch,   // ← AJOUTÉ
+  Patch, // ← AJOUTÉ
   Delete,
   Body,
   Param,
@@ -16,7 +16,9 @@ import { JwtAuthGuard } from '../auth/jwt.guard';
 @Controller()
 @UseGuards(JwtAuthGuard)
 export class CollectionPlansController {
-  constructor(private readonly collectionPlansService: CollectionPlansService) {}
+  constructor(
+    private readonly collectionPlansService: CollectionPlansService,
+  ) {}
 
   // ── Plans ──────────────────────────────────────────────────────────────────
 
@@ -34,10 +36,7 @@ export class CollectionPlansController {
   }
 
   @Get('hypotheses/:hypothesisId/collection-plans')
-  findAll(
-    @Param('hypothesisId') hypothesisId: string,
-    @Request() req: any,
-  ) {
+  findAll(@Param('hypothesisId') hypothesisId: string, @Request() req: any) {
     return this.collectionPlansService.getCollectionPlans(
       hypothesisId,
       req.user.userId,

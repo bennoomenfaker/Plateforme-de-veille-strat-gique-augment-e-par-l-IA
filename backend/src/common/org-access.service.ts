@@ -1,4 +1,8 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { OrgRole } from '../../generated/prisma';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -61,9 +65,16 @@ export class OrgAccessService {
     return access;
   }
 
-  async getOrgMemberRole(organisationId: string, userId: string): Promise<OrgRole | null> {
+  async getOrgMemberRole(
+    organisationId: string,
+    userId: string,
+  ): Promise<OrgRole | null> {
     const membre = await this.prisma.membreOrganisation.findFirst({
-      where: { organisation_id: organisationId, user_id: userId, statut: 'ACTIF' },
+      where: {
+        organisation_id: organisationId,
+        user_id: userId,
+        statut: 'ACTIF',
+      },
     });
     return membre?.role ?? null;
   }
@@ -71,7 +82,9 @@ export class OrgAccessService {
   async assertOrgOwner(organisationId: string, userId: string) {
     const role = await this.getOrgMemberRole(organisationId, userId);
     if (role !== 'PROPRIETAIRE') {
-      throw new ForbiddenException('Accès réservé au propriétaire de l\'organisation');
+      throw new ForbiddenException(
+        "Accès réservé au propriétaire de l'organisation",
+      );
     }
   }
 }

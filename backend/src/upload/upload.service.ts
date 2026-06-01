@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
@@ -36,7 +41,9 @@ export class UploadService {
     const project = plan.hypothesis.axis.objective.project;
     const hasAccess =
       project.owner_user_id === userId ||
-      project.organisation?.members.some(m => m.user_id === userId && m.statut === 'ACTIF');
+      project.organisation?.members.some(
+        (m) => m.user_id === userId && m.statut === 'ACTIF',
+      );
 
     if (!hasAccess) throw new ForbiddenException('Accès refusé');
 
@@ -46,7 +53,11 @@ export class UploadService {
     // Vérifier doublon
     const existing = await this.prisma.rawItem.findUnique({ where: { hash } });
     if (existing) {
-      return { message: 'Ce fichier existe déjà', raw_item_id: existing.id, duplicate: true };
+      return {
+        message: 'Ce fichier existe déjà',
+        raw_item_id: existing.id,
+        duplicate: true,
+      };
     }
 
     // Extraire le texte du PDF
@@ -109,7 +120,9 @@ export class UploadService {
 
     if (!rawItem) throw new NotFoundException('Document introuvable');
     if (rawItem.source_type !== 'UPLOAD') {
-      throw new BadRequestException('Seuls les PDF uploadés peuvent être supprimés');
+      throw new BadRequestException(
+        'Seuls les PDF uploadés peuvent être supprimés',
+      );
     }
 
     await this.assertPlanAccess(rawItem.collection_plan_id, userId);

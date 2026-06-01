@@ -1,4 +1,9 @@
-import { Injectable, ForbiddenException, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  ForbiddenException,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { OrgAccessService } from '../common/org-access.service';
 
@@ -10,18 +15,26 @@ export class ProjectsService {
   ) {}
 
   private async checkAccess(projectId: string, userId: string) {
-    const { project } = await this.orgAccess.assertProjectRead(projectId, userId);
+    const { project } = await this.orgAccess.assertProjectRead(
+      projectId,
+      userId,
+    );
     return project;
   }
 
   private async checkWriteAccess(projectId: string, userId: string) {
-    const { project } = await this.orgAccess.assertProjectWrite(projectId, userId);
+    const { project } = await this.orgAccess.assertProjectWrite(
+      projectId,
+      userId,
+    );
     return project;
   }
 
   async createProject(data: any, userId: string) {
     if (data.end_date) {
-      throw new BadRequestException('La date de clôture ne peut pas être définie à la création.');
+      throw new BadRequestException(
+        'La date de clôture ne peut pas être définie à la création.',
+      );
     }
 
     // Si l'user appartient à une org, on lie le projet à cette org automatiquement
@@ -50,11 +63,15 @@ export class ProjectsService {
   async createOrgProject(data: any, userId: string, organisationId: string) {
     const role = await this.orgAccess.getOrgMemberRole(organisationId, userId);
     if (!this.orgAccess.canWrite(role)) {
-      throw new ForbiddenException('Accès insuffisant pour créer un projet d\'organisation');
+      throw new ForbiddenException(
+        "Accès insuffisant pour créer un projet d'organisation",
+      );
     }
 
     if (data.end_date) {
-      throw new BadRequestException('La date de clôture ne peut pas être définie à la création.');
+      throw new BadRequestException(
+        'La date de clôture ne peut pas être définie à la création.',
+      );
     }
 
     const project = await this.prisma.project.create({
@@ -82,7 +99,7 @@ export class ProjectsService {
       where: { user_id: userId, statut: 'ACTIF' },
       select: { organisation_id: true },
     });
-    const orgIds = memberships.map(m => m.organisation_id);
+    const orgIds = memberships.map((m) => m.organisation_id);
 
     // Projets individuels (owner ET pas lié à une org)
     const individualProjects = await this.prisma.project.findMany({
@@ -96,52 +113,63 @@ export class ProjectsService {
               include: {
                 hypotheses: {
                   include: {
-                    collection_plans: { include: { sources: true, keywords: true } }
-                  }
-                }
-              }
-            }
-          }
-        }
+                    collection_plans: {
+                      include: { sources: true, keywords: true },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
       },
     });
 
     // Projets d'organisation : tous les projets des orgs dont l'user est membre
-    const orgProjects = orgIds.length > 0
-      ? await this.prisma.project.findMany({
-          where: {
-            ...commonFilter,
-            organisation_id: { in: orgIds },
-          },
-          include: {
-            folder: true,
-            sources: true,
-            organisation: { select: { nom: true } },
-            objectives: {
-              include: {
-                axes: {
-                  include: {
-                    hypotheses: {
-                      include: {
-                        collection_plans: { include: { sources: true, keywords: true } }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          },
-        })
-      : [];
+    const orgProjects =
+      orgIds.length > 0
+        ? await this.prisma.project.findMany({
+            where: {
+              ...commonFilter,
+              organisation_id: { in: orgIds },
+            },
+            include: {
+              folder: true,
+              sources: true,
+              organisation: { select: { nom: true } },
+              objectives: {
+                include: {
+                  axes: {
+                    include: {
+                      hypotheses: {
+                        include: {
+                          collection_plans: {
+                            include: { sources: true, keywords: true },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          })
+        : [];
 
     const enrichProject = (project: any) => {
-      const planSources = project.objectives?.flatMap((obj: any) =>
-        obj.axes?.flatMap((axe: any) =>
-          axe.hypotheses?.flatMap((hyp: any) =>
-            hyp.collection_plans?.flatMap((plan: any) => plan.sources || []) || []
-          ) || []
-        ) || []
-      ) || [];
+      const planSources =
+        project.objectives?.flatMap(
+          (obj: any) =>
+            obj.axes?.flatMap(
+              (axe: any) =>
+                axe.hypotheses?.flatMap(
+                  (hyp: any) =>
+                    hyp.collection_plans?.flatMap(
+                      (plan: any) => plan.sources || [],
+                    ) || [],
+                ) || [],
+            ) || [],
+        ) || [];
       return {
         ...project,
         _totalSources: (project.sources?.length || 0) + planSources.length,
@@ -171,7 +199,7 @@ export class ProjectsService {
                 hypotheses: {
                   include: {
                     collection_plans: {
-                      include: { sources: true, keywords: true }
+                      include: { sources: true, keywords: true },
                     },
                   },
                 },
@@ -181,7 +209,7 @@ export class ProjectsService {
           orderBy: { priority: 'asc' },
         },
         stakeholders: {
-          include: { user: { select: { id: true, nom: true, email: true } } }
+          include: { user: { select: { id: true, nom: true, email: true } } },
         },
       },
     });
@@ -193,7 +221,9 @@ export class ProjectsService {
     if (data.end_date) {
       const newEndDate = new Date(data.end_date);
       if (newEndDate < project.start_date) {
-        throw new BadRequestException('La date de fin ne peut pas être antérieure à la date de début.');
+        throw new BadRequestException(
+          'La date de fin ne peut pas être antérieure à la date de début.',
+        );
       }
     }
 
@@ -237,7 +267,7 @@ export class ProjectsService {
     await this.checkWriteAccess(id, userId);
     await this.prisma.project.update({
       where: { id },
-      data: { is_deleted: true, deleted_at: new Date() }
+      data: { is_deleted: true, deleted_at: new Date() },
     });
     await this.logActivity(userId, 'DELETE_PROJECT', 'project', id);
     return { message: 'Projet supprimé avec succès' };
@@ -249,10 +279,15 @@ export class ProjectsService {
     });
   }
 
-  private async logActivity(userId: string, action: string, entityType: string, entityId: string) {
+  private async logActivity(
+    userId: string,
+    action: string,
+    entityType: string,
+    entityId: string,
+  ) {
     try {
       await this.prisma.userActivityLog.create({
-        data: { user_id: userId, action, entityType, entityId }
+        data: { user_id: userId, action, entityType, entityId },
       });
     } catch {}
   }

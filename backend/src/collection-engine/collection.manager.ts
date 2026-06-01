@@ -38,7 +38,10 @@ export class CollectionManager {
     for (const source of project.sources) {
       if (!source.url) continue;
       const rawItems = await this.rssService.fetch(source.url);
-      const filteredItems = this.keywordFilter.filter(rawItems, project.keywords);
+      const filteredItems = this.keywordFilter.filter(
+        rawItems,
+        project.keywords,
+      );
       for (const item of filteredItems) {
         try {
           await this.prisma.rawData.upsert({
@@ -53,7 +56,7 @@ export class CollectionManager {
     return { collected: totalCollected };
   }
 
-  //  Collecte via CollectionPlan 
+  //  Collecte via CollectionPlan
   async runCollectionPlan(
     planId: string,
     userId: string,
@@ -101,7 +104,6 @@ export class CollectionManager {
       },
     });
 
-   
     await this.prisma.collectionJob.update({
       where: { id: job.id },
       data: {
@@ -146,25 +148,20 @@ export class CollectionManager {
         try {
           if (sourceType === 'RSS') {
             rawItems = await this.rssService.fetch(source.source_url);
-
           } else if (sourceType === 'WEB') {
             rawItems = await this.webService.fetch(source.source_url);
-
           } else if (sourceType === 'PDF') {
             rawItems = await this.pdfScraperService.fetchPdfLinks(
               source.source_url,
             );
-
           } else if (sourceType === 'UPLOAD' || sourceType === 'DOCUMENT') {
             this.logger.log(
               `Source ${sourceType} ignorée dans le run automatique (ajout manuel / upload)`,
             );
             logs.push(sourceLog);
             continue;
-
           } else if (sourceType === 'API') {
             rawItems = await this.fetchApiSource(source);
-
           } else {
             this.logger.warn(
               `Type source inconnu: ${source.source_type} — ignoré`,
@@ -173,7 +170,6 @@ export class CollectionManager {
             continue;
           }
         } catch (connectorErr) {
-          
           this.logger.warn(
             `Erreur connecteur ${sourceType}, retry dans 3s... : ${connectorErr.message}`,
           );
@@ -184,7 +180,9 @@ export class CollectionManager {
             } else if (sourceType === 'WEB') {
               rawItems = await this.webService.fetch(source.source_url);
             } else if (sourceType === 'PDF') {
-              rawItems = await this.pdfScraperService.fetchPdfLinks(source.source_url);
+              rawItems = await this.pdfScraperService.fetchPdfLinks(
+                source.source_url,
+              );
             }
           } catch (retryErr) {
             this.logger.error(
@@ -196,15 +194,16 @@ export class CollectionManager {
           }
         }
 
-       
         let filtered =
           includeKeywords.length > 0
             ? this.keywordFilter.filterInclude(rawItems, includeKeywords)
             : rawItems;
 
-        
         if (excludeKeywords.length > 0) {
-          filtered = this.keywordFilter.filterExclude(filtered, excludeKeywords);
+          filtered = this.keywordFilter.filterExclude(
+            filtered,
+            excludeKeywords,
+          );
         }
 
         // Stocker les items
@@ -333,15 +332,21 @@ export class CollectionManager {
   private calculateNextRun(frequency: string): Date {
     const next = new Date();
     switch (frequency?.toUpperCase()) {
-      case 'DAILY':   next.setDate(next.getDate() + 1);    break;
-      case 'WEEKLY':  next.setDate(next.getDate() + 7);    break;
-      case 'MONTHLY': next.setMonth(next.getMonth() + 1);  break;
-      default:        next.setDate(next.getDate() + 1);
+      case 'DAILY':
+        next.setDate(next.getDate() + 1);
+        break;
+      case 'WEEKLY':
+        next.setDate(next.getDate() + 7);
+        break;
+      case 'MONTHLY':
+        next.setMonth(next.getMonth() + 1);
+        break;
+      default:
+        next.setDate(next.getDate() + 1);
     }
     return next;
   }
 
-  
   private sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
@@ -407,7 +412,10 @@ export class CollectionManager {
       const title =
         item.title || item.name || item.headline || `API item ${index + 1}`;
       const content =
-        item.content || item.description || item.summary || JSON.stringify(item);
+        item.content ||
+        item.description ||
+        item.summary ||
+        JSON.stringify(item);
       const url = item.url || item.link || source.source_url;
       const contentHash = crypto
         .createHash('sha256')
@@ -419,9 +427,7 @@ export class CollectionManager {
         content,
         url,
         contentHash,
-        publishedAt: item.publishedAt
-          ? new Date(item.publishedAt)
-          : new Date(),
+        publishedAt: item.publishedAt ? new Date(item.publishedAt) : new Date(),
       };
     });
   }

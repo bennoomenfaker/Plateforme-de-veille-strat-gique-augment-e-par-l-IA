@@ -1,4 +1,15 @@
-import { Controller, Get, Post, Put, Patch, Delete, Body, Param, UseGuards, Request } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Put,
+  Patch,
+  Delete,
+  Body,
+  Param,
+  UseGuards,
+  Request,
+} from '@nestjs/common';
 import { ProjectsService } from './projects.service';
 import { JwtAuthGuard } from '../auth/jwt.guard';
 
@@ -15,7 +26,11 @@ export class ProjectsController {
 
   // POST /projects/organisation/:orgId → projet d'organisation
   @Post('organisation/:orgId')
-  async createOrgProject(@Param('orgId') orgId: string, @Body() body: any, @Request() req: any) {
+  async createOrgProject(
+    @Param('orgId') orgId: string,
+    @Body() body: any,
+    @Request() req: any,
+  ) {
     return this.projectsService.createOrgProject(body, req.user.userId, orgId);
   }
 
@@ -39,7 +54,11 @@ export class ProjectsController {
 
   // PUT /projects/:id → modifier paramètres
   @Put(':id')
-  async update(@Param('id') id: string, @Body() body: any, @Request() req: any) {
+  async update(
+    @Param('id') id: string,
+    @Body() body: any,
+    @Request() req: any,
+  ) {
     return this.projectsService.updateProject(id, req.user.userId, body);
   }
 

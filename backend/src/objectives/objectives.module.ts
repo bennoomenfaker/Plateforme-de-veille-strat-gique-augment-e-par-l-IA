@@ -5,7 +5,12 @@ import { ObjectivesService } from './objectives.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Module({
-  imports: [JwtModule.register({ secret: 'SECRET_KEY_SUPER_FORTE', signOptions: { expiresIn: '1d' } })],
+  imports: [
+    JwtModule.register({
+      secret: 'SECRET_KEY_SUPER_FORTE',
+      signOptions: { expiresIn: '1d' },
+    }),
+  ],
   controllers: [ObjectivesController],
   providers: [ObjectivesService, PrismaService],
   exports: [ObjectivesService],

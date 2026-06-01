@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
@@ -25,11 +26,16 @@ import { ProcessingModule } from './processing/processing.module';
 import { CommonModule } from './common/common.module';
 import { ReportsModule } from './reports/reports.module';
 
-
 @Module({
   imports: [
     CommonModule,
     ScheduleModule.forRoot(),
+    ThrottlerModule.forRoot({
+      throttlers: [
+        { name: 'auth', ttl: 60000, limit: 20 },
+      ],
+      errorMessage: 'Too many requests, try again later',
+    }),
     AuthModule,
     OrganisationsModule,
     ProjectsModule,
@@ -51,7 +57,6 @@ import { ReportsModule } from './reports/reports.module';
     UploadModule,
     ProcessingModule,
     ReportsModule,
-
   ],
   controllers: [AppController],
   providers: [AppService],

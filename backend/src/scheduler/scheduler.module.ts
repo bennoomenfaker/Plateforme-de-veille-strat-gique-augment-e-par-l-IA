@@ -6,10 +6,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CollectionEngineModule } from '../collection-engine/collection-engine.module';
 
 @Module({
-  imports: [
-    ScheduleModule.forRoot(),
-    CollectionEngineModule,
-  ],
+  imports: [ScheduleModule.forRoot(), CollectionEngineModule],
   providers: [SchedulerService, PrismaService],
 })
 export class SchedulerModule {}

@@ -10,7 +10,7 @@ import { PrismaService } from '../prisma/prisma.service';
   imports: [
     MulterModule.register({
       storage: diskStorage({
-        destination: '/app/uploads/pdfs',
+        destination: './uploads/pdfs',
         filename: (req, file, cb) => {
           const uniqueSuffix =
             Date.now() + '-' + Math.round(Math.random() * 1e9);

@@ -8,7 +8,7 @@ import * as path from 'path';
 @Injectable()
 export class PdfScraperService {
   private readonly logger = new Logger(PdfScraperService.name);
-  private readonly uploadDir = '/app/uploads/pdfs';
+  private readonly uploadDir = './uploads/pdfs';
 
   constructor() {
     // Créer le dossier uploads si inexistant
@@ -56,11 +56,14 @@ export class PdfScraperService {
         });
       });
 
-      this.logger.log(`[PDF-SCRAPER] ${items.length} PDF trouvés sur ${pageUrl}`);
+      this.logger.log(
+        `[PDF-SCRAPER] ${items.length} PDF trouvés sur ${pageUrl}`,
+      );
       return items.slice(0, 20); // Limiter à 20 PDFs
-
     } catch (error) {
-      this.logger.error(`[PDF-SCRAPER] Erreur sur ${pageUrl}: ${error.message}`);
+      this.logger.error(
+        `[PDF-SCRAPER] Erreur sur ${pageUrl}: ${error.message}`,
+      );
       return [];
     }
   }
@@ -78,9 +81,10 @@ export class PdfScraperService {
 
       this.logger.log(`[PDF-SCRAPER] PDF téléchargé: ${filePath}`);
       return filePath;
-
     } catch (error) {
-      this.logger.error(`[PDF-SCRAPER] Erreur téléchargement ${pdfUrl}: ${error.message}`);
+      this.logger.error(
+        `[PDF-SCRAPER] Erreur téléchargement ${pdfUrl}: ${error.message}`,
+      );
       return null;
     }
   }

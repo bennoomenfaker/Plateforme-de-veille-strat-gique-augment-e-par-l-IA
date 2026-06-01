@@ -5,6 +5,7 @@ import RegisterPage from './pages/auth/RegisterPage';
 import RegisterOrgPage from './pages/auth/RegisterOrgPage';
 import InvitationPage from './pages/auth/InvitationPage';
 import ForgotPasswordPage from './pages/auth/ForgotPasswordPage';
+import ResetPasswordPage from './pages/auth/ResetPasswordPage';
 import DashboardPage from './pages/dashboard/DashboardPage';
 import ProjectsPage from './pages/projects/ProjectsPage';
 import ProjectDetailPage from './pages/projects/ProjectDetailPage';
@@ -47,6 +48,7 @@ export default function App() {
         <Route path="/register/organisation" element={<PublicRoute><RegisterOrgPage /></PublicRoute>} />
         <Route path="/invitation/:token" element={<InvitationPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
         <Route path="/admin" element={<AdminPage />} />
 
         {/* App */}

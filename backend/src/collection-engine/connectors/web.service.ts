@@ -8,11 +8,12 @@ export class WebService {
   private readonly logger = new Logger(WebService.name);
 
   private readonly HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    'User-Agent':
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
     'Accept-Language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7',
     'Accept-Encoding': 'gzip, deflate',
-    'Connection': 'keep-alive',
+    Connection: 'keep-alive',
   };
 
   async fetch(url: string): Promise<any[]> {
@@ -37,7 +38,9 @@ export class WebService {
         'article a[href]',
         '.article a[href]',
         '.post a[href]',
-        'h1 a[href]', 'h2 a[href]', 'h3 a[href]',
+        'h1 a[href]',
+        'h2 a[href]',
+        'h3 a[href]',
         '.headline a[href]',
         '.story a[href]',
         '.news-item a[href]',
@@ -48,7 +51,8 @@ export class WebService {
       for (const selector of articleSelectors) {
         $(selector).each((_, el) => {
           const href = $(el).attr('href');
-          const title = $(el).text().trim() ||
+          const title =
+            $(el).text().trim() ||
             $(el).attr('title') ||
             $(el).find('h1,h2,h3').first().text().trim();
 
@@ -70,7 +74,9 @@ export class WebService {
 
       // Scraper chaque article trouvé (limité à 20)
       const articleList = Array.from(found.values()).slice(0, 20);
-      this.logger.log(`[WEB] ${articleList.length} articles trouvés sur ${url}`);
+      this.logger.log(
+        `[WEB] ${articleList.length} articles trouvés sur ${url}`,
+      );
 
       for (const article of articleList) {
         try {
@@ -111,11 +117,20 @@ export class WebService {
     });
 
     const $ = cheerio.load(response.data);
-    $('script, style, nav, footer, header, aside, iframe, .ad, .cookie, .popup, .sidebar, .menu').remove();
+    $(
+      'script, style, nav, footer, header, aside, iframe, .ad, .cookie, .popup, .sidebar, .menu',
+    ).remove();
 
     const selectors = [
-      'article', '[role="main"]', '.article-content', '.article-body',
-      '.post-content', '.entry-content', '.content-body', 'main', '.main-content',
+      'article',
+      '[role="main"]',
+      '.article-content',
+      '.article-body',
+      '.post-content',
+      '.entry-content',
+      '.content-body',
+      'main',
+      '.main-content',
     ];
 
     for (const selector of selectors) {
@@ -139,10 +154,10 @@ export class WebService {
       /#/,
       /\.(jpg|jpeg|png|gif|pdf|zip|mp4|mp3)$/i,
     ];
-    return navPatterns.some(p => p.test(url));
+    return navPatterns.some((p) => p.test(url));
   }
 
   private sleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }

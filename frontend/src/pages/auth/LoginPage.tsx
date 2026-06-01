@@ -1,17 +1,22 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import api, { formatApiError } from '../../services/api';
+import Toast from '../../components/Toast';
 
 export default function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const [form, setForm] = useState({ email: '', mot_de_passe: '' });
-  const [error, setError] = useState('');
+  const [toast, setToast] = useState<{ message: string; type: 'error' | 'success' | 'info' } | null>(null);
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!form.email.trim() || !form.mot_de_passe.trim()) {
+      setToast({ message: 'Veuillez remplir tous les champs', type: 'error' });
+      return;
+    }
     setLoading(true);
     try {
       const res = await api.post('/auth/login', form);
@@ -22,16 +27,21 @@ export default function LoginPage() {
         err && typeof err === 'object' && 'response' in err
           ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
           : undefined;
-      if (msg === 'Compte suspendu') setError('Votre compte a été suspendu');
-      else if (msg === 'Compte inactif') setError('Votre compte est inactif');
-      else setError(formatApiError(err, 'Email ou mot de passe incorrect'));
+      if (msg === 'Email non trouvé') setToast({ message: 'Email inexistant', type: 'error' });
+      else if (msg === 'Mot de passe incorrect') setToast({ message: 'Mot de passe incorrect', type: 'error' });
+      else if (msg === 'Compte suspendu') setToast({ message: 'Votre compte a été suspendu', type: 'error' });
+      else if (msg === 'Compte inactif') setToast({ message: 'Votre compte est inactif', type: 'error' });
+      else setToast({ message: formatApiError(err, 'Email ou mot de passe incorrect'), type: 'error' });
     } finally {
       setLoading(false);
     }
   };
 
+  const closeToast = useCallback(() => setToast(null), []);
+
   return (
     <div className="min-h-screen bg-slate-950 flex">
+      {toast && <Toast message={toast.message} type={toast.type} onClose={closeToast} />}
       <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-blue-600 to-indigo-700 flex-col justify-between p-12">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center">
@@ -65,19 +75,13 @@ export default function LoginPage() {
             <p className="text-slate-400 text-sm">Accédez à votre espace de veille</p>
           </div>
 
-          {error && (
-            <div className="bg-red-500/10 border border-red-500/20 text-red-400 rounded-lg p-3 mb-5 text-sm">
-              {error}
-            </div>
-          )}
-
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-slate-300 mb-1.5">Email</label>
               <input
                 type="email"
                 value={form.email}
-                onChange={e => { setForm({ ...form, email: e.target.value }); setError(''); }}
+                onChange={e => { setForm({ ...form, email: e.target.value }); setToast(null); }}
                 className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-slate-500"
                 placeholder="vous@exemple.com"
                 required
@@ -88,11 +92,16 @@ export default function LoginPage() {
               <input
                 type="password"
                 value={form.mot_de_passe}
-                onChange={e => { setForm({ ...form, mot_de_passe: e.target.value }); setError(''); }}
+                onChange={e => { setForm({ ...form, mot_de_passe: e.target.value }); setToast(null); }}
                 className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-slate-500"
                 placeholder="••••••••"
                 required
               />
+            </div>
+            <div className="text-right">
+              <Link to="/forgot-password" className="text-sm text-slate-400 hover:text-blue-400 transition">
+                Mot de passe oublié ?
+              </Link>
             </div>
             <button
               type="submit"

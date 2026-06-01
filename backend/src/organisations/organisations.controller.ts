@@ -1,4 +1,14 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, UseGuards, Request } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Delete,
+  Body,
+  Param,
+  UseGuards,
+  Request,
+} from '@nestjs/common';
 import { OrganisationsService } from './organisations.service';
 import { JwtAuthGuard } from '../auth/jwt.guard';
 
@@ -33,20 +43,36 @@ export class OrganisationsController {
 
   // POST /organisations/:id/membres → ajouter membre directement
   @Post(':id/membres')
-  async addMember(@Param('id') id: string, @Body() body: any, @Request() req: any) {
+  async addMember(
+    @Param('id') id: string,
+    @Body() body: any,
+    @Request() req: any,
+  ) {
     return this.organisationsService.addMember(id, req.user.userId, body);
   }
 
   // POST /organisations/:id/invite → inviter via email
   @Post(':id/invite')
-  async invite(@Param('id') id: string, @Body() body: any, @Request() req: any) {
+  async invite(
+    @Param('id') id: string,
+    @Body() body: any,
+    @Request() req: any,
+  ) {
     return this.organisationsService.inviteMember(id, req.user.userId, body);
   }
 
   // DELETE /organisations/:id/membres/:memberId → révoquer
   @Delete(':id/membres/:memberId')
-  async revoke(@Param('id') id: string, @Param('memberId') memberId: string, @Request() req: any) {
-    return this.organisationsService.revokeMember(id, req.user.userId, memberId);
+  async revoke(
+    @Param('id') id: string,
+    @Param('memberId') memberId: string,
+    @Request() req: any,
+  ) {
+    return this.organisationsService.revokeMember(
+      id,
+      req.user.userId,
+      memberId,
+    );
   }
 
   // PATCH /organisations/:id/membres/:memberId/role → changer rôle
@@ -57,7 +83,12 @@ export class OrganisationsController {
     @Body() body: { role: string },
     @Request() req: any,
   ) {
-    return this.organisationsService.changeMemberRole(id, req.user.userId, memberId, body.role);
+    return this.organisationsService.changeMemberRole(
+      id,
+      req.user.userId,
+      memberId,
+      body.role,
+    );
   }
 
   // PATCH /organisations/:id/membres/:memberId/status → changer statut
@@ -68,7 +99,12 @@ export class OrganisationsController {
     @Body() body: { statut: string },
     @Request() req: any,
   ) {
-    return this.organisationsService.changeMemberStatus(id, req.user.userId, memberId, body.statut);
+    return this.organisationsService.changeMemberStatus(
+      id,
+      req.user.userId,
+      memberId,
+      body.statut,
+    );
   }
 
   // GET /organisations/:id/invitations → historique

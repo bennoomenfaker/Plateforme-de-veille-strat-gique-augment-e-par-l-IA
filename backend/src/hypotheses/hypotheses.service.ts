@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -10,21 +15,32 @@ export class HypothesesService {
       where: { id: axisId },
       include: {
         objective: {
-          include: { project: { include: { organisation: { include: { members: true } } } } },
+          include: {
+            project: {
+              include: { organisation: { include: { members: true } } },
+            },
+          },
         },
       },
     });
     if (!axis) throw new NotFoundException('Axe introuvable');
     const project = axis.objective.project;
     if (project.owner_user_id === userId) return axis;
-    if (project.organisation?.members.some(m => m.user_id === userId && m.statut === 'ACTIF')) return axis;
+    if (
+      project.organisation?.members.some(
+        (m) => m.user_id === userId && m.statut === 'ACTIF',
+      )
+    )
+      return axis;
     throw new ForbiddenException('Accès refusé');
   }
 
   async createHypothesis(axisId: string, userId: string, data: any) {
     await this.checkAxisAccess(axisId, userId);
-    const count = await this.prisma.projectHypothesis.count({ where: { axis_id: axisId } });
-    
+    const count = await this.prisma.projectHypothesis.count({
+      where: { axis_id: axisId },
+    });
+
     const hypothesis = await this.prisma.projectHypothesis.create({
       data: {
         content: data.content,
@@ -33,8 +49,13 @@ export class HypothesesService {
         axis_id: axisId,
       },
     });
-    
-    await this.logActivity(userId, 'CREATE_HYPOTHESIS', 'hypothesis', hypothesis.id);
+
+    await this.logActivity(
+      userId,
+      'CREATE_HYPOTHESIS',
+      'hypothesis',
+      hypothesis.id,
+    );
     return hypothesis;
   }
 
@@ -54,28 +75,35 @@ export class HypothesesService {
    * Point 5 : CRUD Complet (Update & Réaffectation)
    */
   async updateHypothesis(hypothesisId: string, userId: string, data: any) {
-    const hypothesis = await this.prisma.projectHypothesis.findUnique({ where: { id: hypothesisId } });
+    const hypothesis = await this.prisma.projectHypothesis.findUnique({
+      where: { id: hypothesisId },
+    });
     if (!hypothesis) throw new NotFoundException('Hypothèse introuvable');
-    
+
     // Vérifier l'accès à l'axe actuel
     await this.checkAxisAccess(hypothesis.axis_id, userId);
 
     // Point 4.1 : Si on change d'axe (réaffectation), vérifier l'accès au nouvel axe
     if (data.axis_id && data.axis_id !== hypothesis.axis_id) {
-        await this.checkAxisAccess(data.axis_id, userId);
+      await this.checkAxisAccess(data.axis_id, userId);
     }
 
     const updated = await this.prisma.projectHypothesis.update({
       where: { id: hypothesisId },
-      data: { 
-        content: data.content, 
-        priority: data.priority, 
+      data: {
+        content: data.content,
+        priority: data.priority,
         statut: data.statut,
-        axis_id: data.axis_id // Support de la réaffectation
+        axis_id: data.axis_id, // Support de la réaffectation
       },
     });
 
-    await this.logActivity(userId, 'UPDATE_HYPOTHESIS', 'hypothesis', hypothesisId);
+    await this.logActivity(
+      userId,
+      'UPDATE_HYPOTHESIS',
+      'hypothesis',
+      hypothesisId,
+    );
     return updated;
   }
 
@@ -83,22 +111,34 @@ export class HypothesesService {
    * Point 5 : CRUD Complet (Delete)
    */
   async deleteHypothesis(hypothesisId: string, userId: string) {
-    const hypothesis = await this.prisma.projectHypothesis.findUnique({ where: { id: hypothesisId } });
+    const hypothesis = await this.prisma.projectHypothesis.findUnique({
+      where: { id: hypothesisId },
+    });
     if (!hypothesis) throw new NotFoundException('Hypothèse introuvable');
-    
+
     await this.checkAxisAccess(hypothesis.axis_id, userId);
-    
+
     // La suppression supprimera automatiquement les plans de collecte liés (Cascade)
     await this.prisma.projectHypothesis.delete({ where: { id: hypothesisId } });
-    
-    await this.logActivity(userId, 'DELETE_HYPOTHESIS', 'hypothesis', hypothesisId);
+
+    await this.logActivity(
+      userId,
+      'DELETE_HYPOTHESIS',
+      'hypothesis',
+      hypothesisId,
+    );
     return { message: 'Hypothèse supprimée avec succès' };
   }
 
-  private async logActivity(userId: string, action: string, entityType: string, entityId: string) {
+  private async logActivity(
+    userId: string,
+    action: string,
+    entityType: string,
+    entityId: string,
+  ) {
     try {
-      await this.prisma.userActivityLog.create({ 
-        data: { user_id: userId, action, entityType, entityId } 
+      await this.prisma.userActivityLog.create({
+        data: { user_id: userId, action, entityType, entityId },
       });
     } catch {}
   }

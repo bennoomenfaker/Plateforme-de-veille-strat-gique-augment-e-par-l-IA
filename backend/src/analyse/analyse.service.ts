@@ -23,7 +23,9 @@ export class AnalyseService {
         orderBy: { enriched_at: 'desc' },
         take: 100,
       }),
-      this.prisma.hypothesisEvaluation.findMany({ where: { project_id: projectId } }),
+      this.prisma.hypothesisEvaluation.findMany({
+        where: { project_id: projectId },
+      }),
       this.prisma.project.findUnique({
         where: { id: projectId },
         include: {
@@ -32,7 +34,11 @@ export class AnalyseService {
               axes: {
                 include: {
                   hypotheses: {
-                    include: { collection_plans: { include: { sources: true, keywords: true } } },
+                    include: {
+                      collection_plans: {
+                        include: { sources: true, keywords: true },
+                      },
+                    },
                   },
                 },
               },
@@ -53,16 +59,23 @@ export class AnalyseService {
     let relevanceCount = 0;
 
     for (const item of enrichedItems) {
-      if (item.sentiment && sentiments[item.sentiment] !== undefined) sentiments[item.sentiment]++;
-      if (item.hypothesis_impact) impacts[item.hypothesis_impact] = (impacts[item.hypothesis_impact] || 0) + 1;
-      if (item.relevance_score) { totalRelevance += item.relevance_score; relevanceCount++; }
+      if (item.sentiment && sentiments[item.sentiment] !== undefined)
+        sentiments[item.sentiment]++;
+      if (item.hypothesis_impact)
+        impacts[item.hypothesis_impact] =
+          (impacts[item.hypothesis_impact] || 0) + 1;
+      if (item.relevance_score) {
+        totalRelevance += item.relevance_score;
+        relevanceCount++;
+      }
       if (Array.isArray(item.entities)) {
-        for (const e of item.entities as string[]) entityMap[e] = (entityMap[e] || 0) + 1;
+        for (const e of item.entities as string[])
+          entityMap[e] = (entityMap[e] || 0) + 1;
       }
       if (Array.isArray(item.topics)) {
-        for (const t of item.topics as string[]) topicMap[t] = (topicMap[t] || 0) + 1;
+        for (const t of item.topics as string[])
+          topicMap[t] = (topicMap[t] || 0) + 1;
       }
-      
     }
 
     const processedForSources = enrichedItems.length
@@ -71,42 +84,58 @@ export class AnalyseService {
           select: { id: true, source_name: true, source_type: true },
         })
       : [];
-    const processedById = Object.fromEntries(processedForSources.map((p) => [p.id, p]));
+    const processedById = Object.fromEntries(
+      processedForSources.map((p) => [p.id, p]),
+    );
     for (const item of enrichedItems) {
       const proc = processedById[item.processed_item_id];
       const src = proc?.source_name || proc?.source_type || 'Inconnu';
       sourceMap[src] = (sourceMap[src] || 0) + 1;
     }
 
-    const topEntities = Object.entries(entityMap).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([name, count]) => ({ name, count }));
-    const topTopics = Object.entries(topicMap).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([name, count]) => ({ name, count }));
-    const topSources = Object.entries(sourceMap).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([name, count]) => ({ name, count }));
+    const topEntities = Object.entries(entityMap)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([name, count]) => ({ name, count }));
+    const topTopics = Object.entries(topicMap)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 8)
+      .map(([name, count]) => ({ name, count }));
+    const topSources = Object.entries(sourceMap)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([name, count]) => ({ name, count }));
 
     // Hypotheses avec évaluations
-    const hypothesesWithEval = project?.objectives?.flatMap(obj =>
-      obj.axes?.flatMap(axe =>
-        axe.hypotheses?.map(hyp => {
-          const eval_ = hypothesisEvals.find(e => e.hypothesis_id === hyp.id);
-          return {
-            id: hyp.id,
-            content: hyp.content,
-            objective: obj.content,
-            axe: axe.name,
-            status: eval_?.status || 'OPEN',
-            confidence: eval_?.confidence || 0,
-            evidence_count: eval_?.evidence_count || 0,
-            support_count: eval_?.support_count || 0,
-            against_count: eval_?.against_count || 0,
-          };
-        }) || []
-      ) || []
-    ) || [];
+    const hypothesesWithEval =
+      project?.objectives?.flatMap(
+        (obj) =>
+          obj.axes?.flatMap(
+            (axe) =>
+              axe.hypotheses?.map((hyp) => {
+                const eval_ = hypothesisEvals.find(
+                  (e) => e.hypothesis_id === hyp.id,
+                );
+                return {
+                  id: hyp.id,
+                  content: hyp.content,
+                  objective: obj.content,
+                  axe: axe.name,
+                  status: eval_?.status || 'OPEN',
+                  confidence: eval_?.confidence || 0,
+                  evidence_count: eval_?.evidence_count || 0,
+                  support_count: eval_?.support_count || 0,
+                  against_count: eval_?.against_count || 0,
+                };
+              }) || [],
+          ) || [],
+      ) || [];
 
     // Items enrichis avec answers
     const insightsWithAnswers = enrichedItems
-      .filter(i => i.answer)
+      .filter((i) => i.answer)
       .slice(0, 20)
-      .map(i => ({
+      .map((i) => ({
         id: i.id,
         answer: i.answer,
         summary: i.summary,
@@ -131,10 +160,17 @@ export class AnalyseService {
         raw_items: rawItemsCount,
         processed_items: processedItemsCount,
         enriched_items: enrichedItemsCount,
-        avg_relevance: relevanceCount > 0 ? Math.round((totalRelevance / relevanceCount) * 100) / 100 : 0,
+        avg_relevance:
+          relevanceCount > 0
+            ? Math.round((totalRelevance / relevanceCount) * 100) / 100
+            : 0,
         hypotheses_count: hypothesesWithEval.length,
-        supported_hypotheses: hypothesesWithEval.filter(h => h.status === 'SUPPORTED').length,
-        contradicted_hypotheses: hypothesesWithEval.filter(h => h.status === 'CONTRADICTED').length,
+        supported_hypotheses: hypothesesWithEval.filter(
+          (h) => h.status === 'SUPPORTED',
+        ).length,
+        contradicted_hypotheses: hypothesesWithEval.filter(
+          (h) => h.status === 'CONTRADICTED',
+        ).length,
       },
       sentiments,
       impacts,
@@ -143,7 +179,7 @@ export class AnalyseService {
       top_sources: topSources,
       hypotheses: hypothesesWithEval,
       insights: insightsWithAnswers,
-      timeline: rawItemsByDate.slice(-30).map(d => ({
+      timeline: rawItemsByDate.slice(-30).map((d) => ({
         date: d.fetched_at,
         count: d._count.id,
       })),
@@ -154,7 +190,8 @@ export class AnalyseService {
     const skip = (page - 1) * limit;
     const where: any = { project_id: projectId };
     if (filters.sentiment) where.sentiment = filters.sentiment;
-    if (filters.minRelevance) where.relevance_score = { gte: parseFloat(filters.minRelevance) };
+    if (filters.minRelevance)
+      where.relevance_score = { gte: parseFloat(filters.minRelevance) };
     if (filters.impact) where.hypothesis_impact = filters.impact;
 
     const [items, total] = await Promise.all([
@@ -180,7 +217,9 @@ export class AnalyseService {
           },
         })
       : [];
-    const processedMap = Object.fromEntries(processedItems.map((p) => [p.id, p]));
+    const processedMap = Object.fromEntries(
+      processedItems.map((p) => [p.id, p]),
+    );
 
     const data = items.map((item) => {
       const proc = processedMap[item.processed_item_id];
@@ -193,18 +232,28 @@ export class AnalyseService {
       };
     });
 
-    return { data, total, page, limit, totalPages: Math.ceil(total / limit) || 1 };
+    return {
+      data,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit) || 1,
+    };
   }
 
   async getStats(projectId: string) {
-    const items = await this.prisma.enrichedItem.findMany({ where: { project_id: projectId } });
+    const items = await this.prisma.enrichedItem.findMany({
+      where: { project_id: projectId },
+    });
     const total = items.length;
     const sentiments = { POSITIF: 0, NEGATIF: 0, NEUTRE: 0 };
     const impacts: Record<string, number> = {};
     let totalRel = 0;
     for (const i of items) {
-      if (i.sentiment && sentiments[i.sentiment] !== undefined) sentiments[i.sentiment]++;
-      if (i.hypothesis_impact) impacts[i.hypothesis_impact] = (impacts[i.hypothesis_impact] || 0) + 1;
+      if (i.sentiment && sentiments[i.sentiment] !== undefined)
+        sentiments[i.sentiment]++;
+      if (i.hypothesis_impact)
+        impacts[i.hypothesis_impact] = (impacts[i.hypothesis_impact] || 0) + 1;
       if (i.relevance_score) totalRel += i.relevance_score;
     }
     return {
@@ -244,11 +293,29 @@ export class AnalyseService {
   }
 
   private detectSentiment(text: string): string {
-    const pos = ['croissance', 'succès', 'innovation', 'hausse', 'progression', 'positif', 'avancée', 'opportunité'];
-    const neg = ['crise', 'baisse', 'problème', 'échec', 'risque', 'menace', 'déclin', 'perte'];
+    const pos = [
+      'croissance',
+      'succès',
+      'innovation',
+      'hausse',
+      'progression',
+      'positif',
+      'avancée',
+      'opportunité',
+    ];
+    const neg = [
+      'crise',
+      'baisse',
+      'problème',
+      'échec',
+      'risque',
+      'menace',
+      'déclin',
+      'perte',
+    ];
     const lower = text.toLowerCase();
-    const posCount = pos.filter(w => lower.includes(w)).length;
-    const negCount = neg.filter(w => lower.includes(w)).length;
+    const posCount = pos.filter((w) => lower.includes(w)).length;
+    const negCount = neg.filter((w) => lower.includes(w)).length;
     if (posCount > negCount) return 'POSITIF';
     if (negCount > posCount) return 'NEGATIF';
     return 'NEUTRE';
@@ -256,17 +323,49 @@ export class AnalyseService {
 
   private detectTrend(text: string): string {
     const lower = text.toLowerCase();
-    if (['augmente', 'croît', 'hausse', 'progression', 'monte'].some(w => lower.includes(w))) return 'HAUSSE';
-    if (['diminue', 'baisse', 'décline', 'chute', 'recul'].some(w => lower.includes(w))) return 'BAISSE';
+    if (
+      ['augmente', 'croît', 'hausse', 'progression', 'monte'].some((w) =>
+        lower.includes(w),
+      )
+    )
+      return 'HAUSSE';
+    if (
+      ['diminue', 'baisse', 'décline', 'chute', 'recul'].some((w) =>
+        lower.includes(w),
+      )
+    )
+      return 'BAISSE';
     return 'STABLE';
   }
 
   private extractKeywords(text: string): string[] {
-    const stopWords = ['le', 'la', 'les', 'de', 'du', 'des', 'un', 'une', 'et', 'en', 'à', 'que', 'qui', 'pour', 'par'];
-    const words = text.toLowerCase().replace(/[^a-zA-ZÀ-ÿ\s]/g, '').split(/\s+/)
-      .filter(w => w.length > 4 && !stopWords.includes(w));
+    const stopWords = [
+      'le',
+      'la',
+      'les',
+      'de',
+      'du',
+      'des',
+      'un',
+      'une',
+      'et',
+      'en',
+      'à',
+      'que',
+      'qui',
+      'pour',
+      'par',
+    ];
+    const words = text
+      .toLowerCase()
+      .replace(/[^a-zA-ZÀ-ÿ\s]/g, '')
+      .split(/\s+/)
+      .filter((w) => w.length > 4 && !stopWords.includes(w));
     const freq: Record<string, number> = {};
     for (const w of words) freq[w] = (freq[w] || 0) + 1;
-    return Object.entries(freq).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([w]) => w);
+    return Object.entries(freq)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([w]) => w);
   }
 }

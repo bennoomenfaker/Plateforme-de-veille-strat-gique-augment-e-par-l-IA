@@ -1,4 +1,15 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, Request } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Delete,
+  Body,
+  Param,
+  Query,
+  UseGuards,
+  Request,
+} from '@nestjs/common';
 import { AlertesService } from './alertes.service';
 import { JwtAuthGuard } from '../auth/jwt.guard';
 
@@ -26,7 +37,11 @@ export class AlertesController {
     @Query('page') page = '1',
     @Query('limit') limit = '20',
   ) {
-    return this.alertesService.getMyAlerts(req.user.userId, parseInt(page), parseInt(limit));
+    return this.alertesService.getMyAlerts(
+      req.user.userId,
+      parseInt(page),
+      parseInt(limit),
+    );
   }
 
   // GET /alertes/unread → compter non lues
@@ -37,7 +52,10 @@ export class AlertesController {
 
   // GET /alertes/project/:projectId → alertes d'un projet
   @Get('project/:projectId')
-  async getProjectAlerts(@Param('projectId') projectId: string, @Request() req: any) {
+  async getProjectAlerts(
+    @Param('projectId') projectId: string,
+    @Request() req: any,
+  ) {
     return this.alertesService.getProjectAlerts(projectId, req.user.userId);
   }
 

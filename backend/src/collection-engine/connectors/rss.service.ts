@@ -10,8 +10,9 @@ export class RssService {
   private parser = new Parser({
     timeout: 15000,
     headers: {
-      'User-Agent': 'Mozilla/5.0 (compatible; VeilleAI/2.0; +https://veilleai.com)',
-      'Accept': 'application/rss+xml, application/xml, text/xml, */*',
+      'User-Agent':
+        'Mozilla/5.0 (compatible; VeilleAI/2.0; +https://veilleai.com)',
+      Accept: 'application/rss+xml, application/xml, text/xml, */*',
     },
     customFields: {
       item: [
@@ -83,11 +84,19 @@ export class RssService {
     if (!html) return '';
     try {
       const $ = cheerio.load(html);
-      $('script, style, nav, footer, header, aside, iframe, noscript, figure, .ad, .advertisement').remove();
+      $(
+        'script, style, nav, footer, header, aside, iframe, noscript, figure, .ad, .advertisement',
+      ).remove();
       const text = $('body').text() || $.root().text();
-      return text.replace(/\s+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+      return text
+        .replace(/\s+/g, ' ')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
     } catch {
-      return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      return html
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
     }
   }
 
@@ -96,8 +105,9 @@ export class RssService {
       const response = await axios.get(url, {
         timeout: 10000,
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-          'Accept': 'text/html,application/xhtml+xml',
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          Accept: 'text/html,application/xhtml+xml',
           'Accept-Language': 'fr-FR,fr;q=0.9,en;q=0.8',
         },
         maxRedirects: 3,
@@ -106,7 +116,9 @@ export class RssService {
       const $ = cheerio.load(response.data);
 
       // Supprimer les éléments non pertinents
-      $('script, style, nav, footer, header, aside, iframe, .ad, .advertisement, .cookie, .popup, .modal, .sidebar').remove();
+      $(
+        'script, style, nav, footer, header, aside, iframe, .ad, .advertisement, .cookie, .popup, .modal, .sidebar',
+      ).remove();
 
       // Essayer d'extraire le contenu principal dans cet ordre de priorité
       const selectors = [

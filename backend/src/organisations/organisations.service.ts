@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { OrgAccessService } from '../common/org-access.service';
+import { MailService } from '../auth-mail/mail.service';
 import * as crypto from 'crypto';
 import * as bcrypt from 'bcrypt';
 
@@ -19,13 +20,15 @@ export class OrganisationsService {
   constructor(
     private prisma: PrismaService,
     private orgAccess: OrgAccessService,
+    private mailService: MailService,
   ) {}
 
   async createOrganisation(userId: string, data: any) {
     const exists = await this.prisma.organisation.findUnique({
       where: { nom: data.nom.trim() },
     });
-    if (exists) throw new ConflictException('Ce nom d\'organisation est déjà pris');
+    if (exists)
+      throw new ConflictException("Ce nom d'organisation est déjà pris");
 
     const organisation = await this.prisma.organisation.create({
       data: {
@@ -48,7 +51,11 @@ export class OrganisationsService {
 
   async getOrganisation(organisationId: string, userId: string) {
     const membre = await this.prisma.membreOrganisation.findFirst({
-      where: { organisation_id: organisationId, user_id: userId, statut: 'ACTIF' },
+      where: {
+        organisation_id: organisationId,
+        user_id: userId,
+        statut: 'ACTIF',
+      },
     });
     if (!membre) throw new ForbiddenException('Accès refusé');
 
@@ -56,7 +63,17 @@ export class OrganisationsService {
       where: { id: organisationId },
       include: {
         members: {
-          include: { user: { select: { id: true, nom: true, email: true, statut: true, photo_url: true } } },
+          include: {
+            user: {
+              select: {
+                id: true,
+                nom: true,
+                email: true,
+                statut: true,
+                photo_url: true,
+              },
+            },
+          },
         },
         projects: { where: { isActive: true, is_deleted: false } },
       },
@@ -70,7 +87,17 @@ export class OrganisationsService {
         organisation: {
           include: {
             members: {
-              include: { user: { select: { id: true, nom: true, email: true, statut: true, photo_url: true } } },
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    nom: true,
+                    email: true,
+                    statut: true,
+                    photo_url: true,
+                  },
+                },
+              },
             },
             projects: { where: { is_deleted: false } },
           },
@@ -91,7 +118,17 @@ export class OrganisationsService {
         },
         include: {
           members: {
-            include: { user: { select: { id: true, nom: true, email: true, statut: true, photo_url: true } } },
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  nom: true,
+                  email: true,
+                  statut: true,
+                  photo_url: true,
+                },
+              },
+            },
           },
           projects: { where: { is_deleted: false } },
         },
@@ -112,13 +149,27 @@ export class OrganisationsService {
 
   async getMembers(organisationId: string, userId: string) {
     const membre = await this.prisma.membreOrganisation.findFirst({
-      where: { organisation_id: organisationId, user_id: userId, statut: 'ACTIF' },
+      where: {
+        organisation_id: organisationId,
+        user_id: userId,
+        statut: 'ACTIF',
+      },
     });
     if (!membre) throw new ForbiddenException('Accès refusé');
 
     return this.prisma.membreOrganisation.findMany({
       where: { organisation_id: organisationId },
-      include: { user: { select: { id: true, nom: true, email: true, statut: true, created_at: true } } },
+      include: {
+        user: {
+          select: {
+            id: true,
+            nom: true,
+            email: true,
+            statut: true,
+            created_at: true,
+          },
+        },
+      },
     });
   }
 
@@ -142,13 +193,18 @@ export class OrganisationsService {
   async addMember(organisationId: string, userId: string, data: any) {
     await this.orgAccess.assertOrgOwner(organisationId, userId);
     if (data.role === 'PROPRIETAIRE') {
-      throw new BadRequestException('Impossible d\'ajouter un second propriétaire');
+      throw new BadRequestException(
+        "Impossible d'ajouter un second propriétaire",
+      );
     }
 
-    let targetUser = await this.prisma.user.findUnique({ where: { email: data.email } });
+    let targetUser = await this.prisma.user.findUnique({
+      where: { email: data.email },
+    });
 
     if (!targetUser) {
-      const tempPassword = data.mot_de_passe || crypto.randomBytes(8).toString('hex');
+      const tempPassword =
+        data.mot_de_passe || crypto.randomBytes(8).toString('hex');
       const hashedPassword = await bcrypt.hash(tempPassword, 10);
       targetUser = await this.prisma.user.create({
         data: {
@@ -164,7 +220,8 @@ export class OrganisationsService {
     const alreadyMember = await this.prisma.membreOrganisation.findFirst({
       where: { organisation_id: organisationId, user_id: targetUser.id },
     });
-    if (alreadyMember) throw new BadRequestException('Cet utilisateur est déjà membre');
+    if (alreadyMember)
+      throw new BadRequestException('Cet utilisateur est déjà membre');
 
     const newMembre = await this.prisma.membreOrganisation.create({
       data: {
@@ -175,7 +232,12 @@ export class OrganisationsService {
       },
     });
 
-    await this.logActivity(userId, 'ADD_MEMBER', 'organisation', organisationId);
+    await this.logActivity(
+      userId,
+      'ADD_MEMBER',
+      'organisation',
+      organisationId,
+    );
     return newMembre;
   }
 
@@ -186,18 +248,27 @@ export class OrganisationsService {
       throw new BadRequestException('Seul le créateur est propriétaire');
     }
 
-    const existingUser = await this.prisma.user.findUnique({ where: { email: data.email } });
+    const existingUser = await this.prisma.user.findUnique({
+      where: { email: data.email },
+    });
     if (existingUser) {
       const alreadyMember = await this.prisma.membreOrganisation.findFirst({
         where: { organisation_id: organisationId, user_id: existingUser.id },
       });
-      if (alreadyMember) throw new BadRequestException('Cet utilisateur est déjà membre');
+      if (alreadyMember)
+        throw new BadRequestException('Cet utilisateur est déjà membre');
     }
 
-    const existingInvitation = await this.prisma.invitationOrganisation.findFirst({
-      where: { organisation_id: organisationId, email: data.email, status: 'PENDING' },
-    });
-    if (existingInvitation) throw new BadRequestException('Une invitation est déjà en attente');
+    const existingInvitation =
+      await this.prisma.invitationOrganisation.findFirst({
+        where: {
+          organisation_id: organisationId,
+          email: data.email,
+          status: 'PENDING',
+        },
+      });
+    if (existingInvitation)
+      throw new BadRequestException('Une invitation est déjà en attente');
 
     const token = crypto.randomBytes(32).toString('hex');
     const expires = new Date(Date.now() + 7 * 24 * 3600000);
@@ -212,7 +283,26 @@ export class OrganisationsService {
       },
     });
 
-    await this.logActivity(userId, 'INVITE_MEMBER', 'organisation', organisationId);
+    await this.logActivity(
+      userId,
+      'INVITE_MEMBER',
+      'organisation',
+      organisationId,
+    );
+
+    const org = await this.prisma.organisation.findUnique({
+      where: { id: organisationId },
+      select: { nom: true },
+    });
+    this.mailService
+      .sendInvitationEmail(
+        data.email,
+        token,
+        org?.nom || 'son organisation',
+        data.role || 'EQUIPE_VEILLE',
+      )
+      .catch(() => {});
+
     return {
       message: 'Invitation envoyée',
       invitation_token: token,
@@ -226,22 +316,35 @@ export class OrganisationsService {
 
   async revokeMember(organisationId: string, userId: string, memberId: string) {
     await this.orgAccess.assertOrgOwner(organisationId, userId);
-    if (memberId === userId) throw new BadRequestException('Vous ne pouvez pas vous révoquer');
+    if (memberId === userId)
+      throw new BadRequestException('Vous ne pouvez pas vous révoquer');
 
     const membre = await this.prisma.membreOrganisation.findFirst({
       where: { organisation_id: organisationId, user_id: memberId },
     });
     if (!membre) throw new NotFoundException('Membre introuvable');
-    if (membre.role === 'PROPRIETAIRE') throw new ForbiddenException('Impossible de révoquer le propriétaire');
+    if (membre.role === 'PROPRIETAIRE')
+      throw new ForbiddenException('Impossible de révoquer le propriétaire');
 
     await this.prisma.membreOrganisation.delete({ where: { id: membre.id } });
-    await this.logActivity(userId, 'REVOKE_MEMBER', 'organisation', organisationId);
+    await this.logActivity(
+      userId,
+      'REVOKE_MEMBER',
+      'organisation',
+      organisationId,
+    );
     return { message: 'Membre révoqué' };
   }
 
-  async changeMemberRole(organisationId: string, userId: string, memberId: string, newRole: string) {
+  async changeMemberRole(
+    organisationId: string,
+    userId: string,
+    memberId: string,
+    newRole: string,
+  ) {
     await this.orgAccess.assertOrgOwner(organisationId, userId);
-    if (memberId === userId) throw new BadRequestException('Impossible de changer votre propre rôle');
+    if (memberId === userId)
+      throw new BadRequestException('Impossible de changer votre propre rôle');
     if (newRole === 'PROPRIETAIRE') {
       throw new ForbiddenException('Un seul propriétaire par organisation');
     }
@@ -256,20 +359,35 @@ export class OrganisationsService {
       data: { role: newRole as any },
     });
 
-    await this.logActivity(userId, 'CHANGE_MEMBER_ROLE', 'organisation', organisationId);
+    await this.logActivity(
+      userId,
+      'CHANGE_MEMBER_ROLE',
+      'organisation',
+      organisationId,
+    );
     return { message: 'Rôle modifié', membre: updated };
   }
 
-  async changeMemberStatus(organisationId: string, userId: string, memberId: string, newStatut: string) {
+  async changeMemberStatus(
+    organisationId: string,
+    userId: string,
+    memberId: string,
+    newStatut: string,
+  ) {
     await this.orgAccess.assertOrgOwner(organisationId, userId);
-    if (memberId === userId) throw new BadRequestException('Impossible de modifier votre propre statut');
+    if (memberId === userId)
+      throw new BadRequestException(
+        'Impossible de modifier votre propre statut',
+      );
 
     const membre = await this.prisma.membreOrganisation.findFirst({
       where: { organisation_id: organisationId, user_id: memberId },
     });
     if (!membre) throw new NotFoundException('Membre introuvable');
     if (membre.role === 'PROPRIETAIRE') {
-      throw new ForbiddenException('Impossible de modifier le statut du propriétaire');
+      throw new ForbiddenException(
+        'Impossible de modifier le statut du propriétaire',
+      );
     }
 
     const updated = await this.prisma.membreOrganisation.update({
@@ -277,7 +395,12 @@ export class OrganisationsService {
       data: { statut: newStatut as any },
     });
 
-    await this.logActivity(userId, 'CHANGE_MEMBER_STATUS', 'organisation', organisationId);
+    await this.logActivity(
+      userId,
+      'CHANGE_MEMBER_STATUS',
+      'organisation',
+      organisationId,
+    );
     return { message: 'Statut modifié', membre: updated };
   }
 
@@ -289,7 +412,12 @@ export class OrganisationsService {
     });
   }
 
-  private async logActivity(userId: string, action: string, entityType: string, entityId: string) {
+  private async logActivity(
+    userId: string,
+    action: string,
+    entityType: string,
+    entityId: string,
+  ) {
     try {
       await this.prisma.userActivityLog.create({
         data: { user_id: userId, action, entityType, entityId },

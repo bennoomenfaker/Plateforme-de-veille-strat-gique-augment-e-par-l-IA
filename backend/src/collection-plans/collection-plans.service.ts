@@ -23,7 +23,9 @@ function validateSourcePayload(data: any) {
 
   if (type === 'DOCUMENT' || type === 'UPLOAD') {
     if (!data.source_label?.trim()) {
-      throw new BadRequestException('Le libellé est obligatoire pour une source document');
+      throw new BadRequestException(
+        'Le libellé est obligatoire pour une source document',
+      );
     }
     return { type, metadata, url: data.source_url?.trim() || null };
   }
@@ -47,10 +49,14 @@ function validateSourcePayload(data: any) {
   }
 
   if (!data.source_url?.trim()) {
-    throw new BadRequestException("L'URL est obligatoire pour ce type de source");
+    throw new BadRequestException(
+      "L'URL est obligatoire pour ce type de source",
+    );
   }
   if (!isValidUrl(data.source_url.trim())) {
-    throw new BadRequestException("L'URL doit être valide et commencer par http:// ou https://");
+    throw new BadRequestException(
+      "L'URL doit être valide et commencer par http:// ou https://",
+    );
   }
   return { type, url: data.source_url.trim(), metadata: metadata || {} };
 }
@@ -88,8 +94,13 @@ export class CollectionPlansService {
     return { hypothesis, project: hypothesis.axis.objective.project };
   }
 
-  private async checkHypothesisAccess(hypothesisId: string, userId: string, write = false) {
-    const { hypothesis, project } = await this.loadHypothesisContext(hypothesisId);
+  private async checkHypothesisAccess(
+    hypothesisId: string,
+    userId: string,
+    write = false,
+  ) {
+    const { hypothesis, project } =
+      await this.loadHypothesisContext(hypothesisId);
     if (write) {
       await this.orgAccess.assertProjectWrite(project.id, userId);
     } else {
@@ -108,10 +119,16 @@ export class CollectionPlansService {
   // ════════════════════════════════════════════════════════════════════════════
 
   async createCollectionPlan(hypothesisId: string, userId: string, data: any) {
-    const { project } = await this.checkHypothesisAccess(hypothesisId, userId, true);
+    const { project } = await this.checkHypothesisAccess(
+      hypothesisId,
+      userId,
+      true,
+    );
 
-    if (!data.question) throw new BadRequestException('La question est obligatoire');
-    if (!data.frequency) throw new BadRequestException('La fréquence est obligatoire');
+    if (!data.question)
+      throw new BadRequestException('La question est obligatoire');
+    if (!data.frequency)
+      throw new BadRequestException('La fréquence est obligatoire');
 
     const startDate = data.collection_start_date
       ? new Date(data.collection_start_date)
@@ -154,7 +171,12 @@ export class CollectionPlansService {
       },
     });
 
-    await this.logActivity(userId, 'CREATE_COLLECTION_PLAN', 'collection_plan', plan.id);
+    await this.logActivity(
+      userId,
+      'CREATE_COLLECTION_PLAN',
+      'collection_plan',
+      plan.id,
+    );
     return plan;
   }
 
@@ -205,14 +227,22 @@ export class CollectionPlansService {
       : plan.collection_end_date;
 
     // Validation : fin >= début
-    if (newEndDate && newStartDate && new Date(newEndDate) < new Date(newStartDate)) {
+    if (
+      newEndDate &&
+      newStartDate &&
+      new Date(newEndDate) < new Date(newStartDate)
+    ) {
       throw new BadRequestException(
         'La date de fin de collecte ne peut pas être antérieure au début.',
       );
     }
 
     // Validation : fin <= fin projet
-    if (newEndDate && project.end_date && new Date(newEndDate) > new Date(project.end_date)) {
+    if (
+      newEndDate &&
+      project.end_date &&
+      new Date(newEndDate) > new Date(project.end_date)
+    ) {
       throw new BadRequestException(
         'La date de fin de collecte dépasse la fin du projet.',
       );
@@ -233,7 +263,12 @@ export class CollectionPlansService {
       },
     });
 
-    await this.logActivity(userId, 'UPDATE_COLLECTION_PLAN', 'collection_plan', planId);
+    await this.logActivity(
+      userId,
+      'UPDATE_COLLECTION_PLAN',
+      'collection_plan',
+      planId,
+    );
     return updated;
   }
 
@@ -272,7 +307,12 @@ export class CollectionPlansService {
   }
 
   // ✅ CORRECTION #5 : updateSource — manquait complètement
-  async updateSource(planId: string, sourceId: string, userId: string, data: any) {
+  async updateSource(
+    planId: string,
+    sourceId: string,
+    userId: string,
+    data: any,
+  ) {
     // Vérifier accès au plan
     const plan = await this.prisma.collectionPlan.findUnique({
       where: { id: planId },
@@ -373,7 +413,9 @@ export class CollectionPlansService {
       await this.checkHypothesisAccess(plan.hypothesis_id, userId, true);
     }
 
-    await this.prisma.collectionPlanKeyword.delete({ where: { id: keywordId } });
+    await this.prisma.collectionPlanKeyword.delete({
+      where: { id: keywordId },
+    });
     return { message: 'Mot-clé supprimé' };
   }
 

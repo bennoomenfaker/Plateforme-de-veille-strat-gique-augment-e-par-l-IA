@@ -23,7 +23,10 @@ export class ProcessingService {
         .replace(/\n{3,}/g, '\n\n')
         .trim();
     } catch {
-      return raw.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      return raw
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
     }
   }
 
@@ -114,9 +117,12 @@ export class ProcessingService {
       }
 
       // Utiliser le titre comme contenu si le corps est vide (cas RSS snippet)
-      const effectiveContent = contentClean.length > 50 ? contentClean : (rawItem.title || contentClean);
+      const effectiveContent =
+        contentClean.length > 50 ? contentClean : rawItem.title || contentClean;
       const language = this.detectLanguage(effectiveContent);
-      const wordCount = effectiveContent ? effectiveContent.split(/\s+/).filter(Boolean).length : 0;
+      const wordCount = effectiveContent
+        ? effectiveContent.split(/\s+/).filter(Boolean).length
+        : 0;
       const charCount = effectiveContent ? effectiveContent.length : 0;
       const excerpt = this.extractExcerpt(effectiveContent);
 
@@ -189,7 +195,9 @@ export class ProcessingService {
 
     this.logger.log(`[Processing] ${rawItems.length} items à traiter`);
 
-    let processed = 0, skipped = 0, failed = 0;
+    let processed = 0,
+      skipped = 0,
+      failed = 0;
     for (const item of rawItems) {
       const result = await this.processOneItem(item);
       if (result.status === 'done') processed++;
@@ -200,7 +208,8 @@ export class ProcessingService {
     await this.prisma.processingJob.update({
       where: { id: job.id },
       data: {
-        status: failed === rawItems.length && rawItems.length > 0 ? 'FAILED' : 'DONE',
+        status:
+          failed === rawItems.length && rawItems.length > 0 ? 'FAILED' : 'DONE',
         finished_at: new Date(),
         total: rawItems.length,
         processed,
@@ -230,7 +239,9 @@ export class ProcessingService {
       take: 100,
     });
 
-    let processed = 0, skipped = 0, failed = 0;
+    let processed = 0,
+      skipped = 0,
+      failed = 0;
     for (const item of rawItems) {
       const result = await this.processOneItem(item);
       if (result.status === 'done') processed++;

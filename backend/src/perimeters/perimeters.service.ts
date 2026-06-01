@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -12,7 +17,12 @@ export class PerimetersService {
     });
     if (!project) throw new NotFoundException('Projet introuvable');
     if (project.owner_user_id === userId) return project;
-    if (project.organisation?.members.some(m => m.user_id === userId && m.statut === 'ACTIF')) return project;
+    if (
+      project.organisation?.members.some(
+        (m) => m.user_id === userId && m.statut === 'ACTIF',
+      )
+    )
+      return project;
     throw new ForbiddenException('Accès refusé');
   }
 
@@ -42,8 +52,14 @@ export class PerimetersService {
     });
   }
 
-  async assignToHypothesis(hypothesisId: string, perimeterId: string, userId: string) {
-    const hypothesis = await this.prisma.projectHypothesis.findUnique({ where: { id: hypothesisId } });
+  async assignToHypothesis(
+    hypothesisId: string,
+    perimeterId: string,
+    userId: string,
+  ) {
+    const hypothesis = await this.prisma.projectHypothesis.findUnique({
+      where: { id: hypothesisId },
+    });
     if (!hypothesis) throw new NotFoundException('Hypothèse introuvable');
     const existing = await this.prisma.hypothesisPerimeter.findFirst({
       where: { hypothesis_id: hypothesisId, perimeter_id: perimeterId },
@@ -54,7 +70,11 @@ export class PerimetersService {
     });
   }
 
-  async removeFromHypothesis(hypothesisId: string, perimeterId: string, userId: string) {
+  async removeFromHypothesis(
+    hypothesisId: string,
+    perimeterId: string,
+    userId: string,
+  ) {
     await this.prisma.hypothesisPerimeter.deleteMany({
       where: { hypothesis_id: hypothesisId, perimeter_id: perimeterId },
     });
@@ -62,7 +82,9 @@ export class PerimetersService {
   }
 
   async deletePerimeter(perimeterId: string, userId: string) {
-    const perimeter = await this.prisma.projectPerimeter.findUnique({ where: { id: perimeterId } });
+    const perimeter = await this.prisma.projectPerimeter.findUnique({
+      where: { id: perimeterId },
+    });
     if (!perimeter) throw new NotFoundException('Périmètre introuvable');
     await this.checkProjectAccess(perimeter.project_id, userId);
     await this.prisma.projectPerimeter.delete({ where: { id: perimeterId } });

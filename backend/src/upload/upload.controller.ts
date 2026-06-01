@@ -33,10 +33,7 @@ export class UploadController {
   }
 
   @Get('plan/:planId')
-  async getByPlan(
-    @Param('planId') planId: string,
-    @Request() req: any,
-  ) {
+  async getByPlan(@Param('planId') planId: string, @Request() req: any) {
     return this.uploadService.getUploadsByPlan(planId, req.user.userId);
   }
 

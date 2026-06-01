@@ -1,4 +1,12 @@
-import { Controller, Post, Get, Param, Query, UseGuards, Request } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Param,
+  Query,
+  UseGuards,
+  Request,
+} from '@nestjs/common';
 import { CollectionManager } from './collection.manager';
 import { JwtAuthGuard } from '../auth/jwt.guard';
 
@@ -35,7 +43,11 @@ export class CollectionController {
     @Query('page') page = '1',
     @Query('limit') limit = '20',
   ) {
-    return this.collectionManager.getRawItemsByPlan(planId, parseInt(page), parseInt(limit));
+    return this.collectionManager.getRawItemsByPlan(
+      planId,
+      parseInt(page),
+      parseInt(limit),
+    );
   }
 
   // ─── Sprint 3 — Voir les raw items d'un projet ────────────────────────────
@@ -46,6 +58,10 @@ export class CollectionController {
     @Query('page') page = '1',
     @Query('limit') limit = '20',
   ) {
-    return this.collectionManager.getRawItemsByProject(projectId, parseInt(page), parseInt(limit));
+    return this.collectionManager.getRawItemsByProject(
+      projectId,
+      parseInt(page),
+      parseInt(limit),
+    );
   }
 }

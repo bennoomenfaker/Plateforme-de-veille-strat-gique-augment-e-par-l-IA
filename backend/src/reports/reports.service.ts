@@ -51,43 +51,70 @@ export class ReportsService {
     });
 
     const stats = {
-      total_raw: await this.prisma.rawItem.count({ where: { project_id: projectId } }),
-      total_processed: await this.prisma.processedItem.count({ where: { project_id: projectId } }),
+      total_raw: await this.prisma.rawItem.count({
+        where: { project_id: projectId },
+      }),
+      total_processed: await this.prisma.processedItem.count({
+        where: { project_id: projectId },
+      }),
       total_enriched: totalEnrichedCount,
-      avg_relevance: enrichedItems.length > 0
-        ? enrichedItems.reduce((acc, i) => acc + (i.relevance_score ?? 0), 0) / enrichedItems.length
-        : 0,
+      avg_relevance:
+        enrichedItems.length > 0
+          ? enrichedItems.reduce(
+              (acc, i) => acc + (i.relevance_score ?? 0),
+              0,
+            ) / enrichedItems.length
+          : 0,
     };
 
     const IMPACT_LABELS: Record<string, string> = {
-      OPEN: 'Ouverte', PARTIALLY_SUPPORTED: 'Partiellement supportée',
-      SUPPORTED: 'Supportée', CONTRADICTED: 'Contredite', NEEDS_MORE_RESEARCH: 'À approfondir',
+      OPEN: 'Ouverte',
+      PARTIALLY_SUPPORTED: 'Partiellement supportée',
+      SUPPORTED: 'Supportée',
+      CONTRADICTED: 'Contredite',
+      NEEDS_MORE_RESEARCH: 'À approfondir',
     };
 
     const IMPACT_COLORS: Record<string, string> = {
-      OPEN: '#9ca3af', PARTIALLY_SUPPORTED: '#f59e0b',
-      SUPPORTED: '#10b981', CONTRADICTED: '#ef4444', NEEDS_MORE_RESEARCH: '#8b5cf6',
+      OPEN: '#9ca3af',
+      PARTIALLY_SUPPORTED: '#f59e0b',
+      SUPPORTED: '#10b981',
+      CONTRADICTED: '#ef4444',
+      NEEDS_MORE_RESEARCH: '#8b5cf6',
     };
 
-    const topInsights = enrichedItems.filter(i => i.answer).slice(0, 10);
+    const topInsights = enrichedItems.filter((i) => i.answer).slice(0, 10);
 
-    const objectivesHtml = (project.objectives ?? []).map(obj => {
-      const axesHtml = (obj.axes ?? []).map(axe => {
-        const hypothesesHtml = (axe.hypotheses ?? []).map(hyp => {
-          const eval_ = hypothesisEvals.find(e => e.hypothesis_id === hyp.id);
-          const impact = eval_?.status ?? 'OPEN';
-          const color = IMPACT_COLORS[impact] ?? '#9ca3af';
-          const label = IMPACT_LABELS[impact] ?? 'Ouverte';
-          const conf = Math.round((eval_?.confidence ?? 0) * 100);
-          const plans = hyp.collection_plans ?? [];
-          const sources = plans.flatMap(p => p.sources ?? []).slice(0, 5);
+    const objectivesHtml = (project.objectives ?? [])
+      .map((obj) => {
+        const axesHtml = (obj.axes ?? [])
+          .map((axe) => {
+            const hypothesesHtml = (axe.hypotheses ?? [])
+              .map((hyp) => {
+                const eval_ = hypothesisEvals.find(
+                  (e) => e.hypothesis_id === hyp.id,
+                );
+                const impact = eval_?.status ?? 'OPEN';
+                const color = IMPACT_COLORS[impact] ?? '#9ca3af';
+                const label = IMPACT_LABELS[impact] ?? 'Ouverte';
+                const conf = Math.round((eval_?.confidence ?? 0) * 100);
+                const plans = hyp.collection_plans ?? [];
+                const sources = plans
+                  .flatMap((p) => p.sources ?? [])
+                  .slice(0, 5);
 
-          const answers = enrichedItems
-            .filter(e => e.collection_plan_id && plans.map(p => p.id).includes(e.collection_plan_id ?? ''))
-            .filter(e => e.answer)
-            .slice(0, 3);
+                const answers = enrichedItems
+                  .filter(
+                    (e) =>
+                      e.collection_plan_id &&
+                      plans
+                        .map((p) => p.id)
+                        .includes(e.collection_plan_id ?? ''),
+                  )
+                  .filter((e) => e.answer)
+                  .slice(0, 3);
 
-          return `
+                return `
             <div style="margin-left:24px;margin-bottom:16px;padding:16px;background:#f8fafc;border-left:4px solid ${color};border-radius:4px;">
               <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">
                 <span style="font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;">Hypothèse</span>
@@ -95,23 +122,32 @@ export class ReportsService {
                 ${eval_ ? `<span style="font-size:11px;color:#64748b;">${conf}% confiance · ${eval_.evidence_count} preuves</span>` : ''}
               </div>
               <p style="font-size:14px;color:#1e293b;margin:0 0 12px 0;">${hyp.content}</p>
-              ${sources.length > 0 ? `
+              ${
+                sources.length > 0
+                  ? `
                 <div style="margin-bottom:8px;">
                   <p style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin:0 0 4px 0;">Sources clés</p>
-                  ${sources.map(s => `<p style="font-size:12px;color:#3b82f6;margin:2px 0;">${s.source_label} ${s.source_url ? `<span style="color:#94a3b8;">(${s.source_url.slice(0,60)}...)</span>` : ''}</p>`).join('')}
+                  ${sources.map((s) => `<p style="font-size:12px;color:#3b82f6;margin:2px 0;">${s.source_label} ${s.source_url ? `<span style="color:#94a3b8;">(${s.source_url.slice(0, 60)}...)</span>` : ''}</p>`).join('')}
                 </div>
-              ` : ''}
-              ${answers.length > 0 ? `
+              `
+                  : ''
+              }
+              ${
+                answers.length > 0
+                  ? `
                 <div>
                   <p style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin:0 0 4px 0;">Réponses IA</p>
-                  ${answers.map(a => `<p style="font-size:12px;color:#475569;margin:4px 0;font-style:italic;">"${(a.answer ?? '').slice(0, 200)}${(a.answer ?? '').length > 200 ? '...' : ''}"</p>`).join('')}
+                  ${answers.map((a) => `<p style="font-size:12px;color:#475569;margin:4px 0;font-style:italic;">"${(a.answer ?? '').slice(0, 200)}${(a.answer ?? '').length > 200 ? '...' : ''}"</p>`).join('')}
                 </div>
-              ` : ''}
+              `
+                  : ''
+              }
             </div>
           `;
-        }).join('');
+              })
+              .join('');
 
-        return `
+            return `
           <div style="margin-left:16px;margin-bottom:12px;">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
               <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px;background:#ede9fe;color:#7c3aed;">Axe</span>
@@ -120,9 +156,10 @@ export class ReportsService {
             ${hypothesesHtml}
           </div>
         `;
-      }).join('');
+          })
+          .join('');
 
-      return `
+        return `
         <div style="margin-bottom:24px;padding:20px;background:white;border:1px solid #e2e8f0;border-radius:8px;">
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;padding-bottom:12px;border-bottom:2px solid #3b82f6;">
             <span style="font-size:11px;font-weight:700;padding:2px 10px;border-radius:999px;background:#dbeafe;color:#1d4ed8;">Objectif ${obj.priority}</span>
@@ -131,22 +168,29 @@ export class ReportsService {
           ${axesHtml}
         </div>
       `;
-    }).join('');
+      })
+      .join('');
 
-    const insightsHtml = topInsights.map((item, i) => {
-      const pct = Math.round((item.relevance_score ?? 0) * 100);
-      const impact = item.hypothesis_impact ?? 'OPEN';
-      const color = IMPACT_COLORS[impact] ?? '#9ca3af';
-      return `
+    const insightsHtml = topInsights
+      .map((item, i) => {
+        const pct = Math.round((item.relevance_score ?? 0) * 100);
+        const impact = item.hypothesis_impact ?? 'OPEN';
+        const color = IMPACT_COLORS[impact] ?? '#9ca3af';
+        return `
         <tr style="background:${i % 2 === 0 ? 'white' : '#f8fafc'};">
           <td style="padding:10px 12px;font-size:12px;color:#1e293b;border-bottom:1px solid #e2e8f0;">${item.summary?.slice(0, 80) ?? 'Sans résumé'}...</td>
           <td style="padding:10px 12px;font-size:12px;font-weight:700;color:${color};border-bottom:1px solid #e2e8f0;">${IMPACT_LABELS[impact]}</td>
           <td style="padding:10px 12px;font-size:12px;font-weight:700;color:#10b981;border-bottom:1px solid #e2e8f0;">${pct}%</td>
         </tr>
       `;
-    }).join('');
+      })
+      .join('');
 
-    const now = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
+    const now = new Date().toLocaleDateString('fr-FR', {
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric',
+    });
 
     return `<!DOCTYPE html>
 <html lang="fr">
@@ -181,7 +225,9 @@ export class ReportsService {
   </div>
 
   <!-- Top insights -->
-  ${topInsights.length > 0 ? `
+  ${
+    topInsights.length > 0
+      ? `
   <div style="margin-bottom:32px;">
     <h2 style="font-size:18px;font-weight:700;color:#0f172a;margin-bottom:16px;padding-bottom:8px;border-bottom:2px solid #e2e8f0;">Top insights IA</h2>
     <table style="width:100%;border-collapse:collapse;">
@@ -195,7 +241,9 @@ export class ReportsService {
       <tbody>${insightsHtml}</tbody>
     </table>
   </div>
-  ` : ''}
+  `
+      : ''
+  }
 
   <!-- Conclusion -->
   <div style="padding:24px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:32px;">
@@ -205,8 +253,8 @@ export class ReportsService {
       Sur ${stats.total_raw} items collectés, ${stats.total_processed} ont été nettoyés et 
       ${stats.total_enriched} ont été enrichis par intelligence artificielle.
       Le score de pertinence moyen est de <strong>${Math.round(stats.avg_relevance * 100)}%</strong>.
-      ${hypothesisEvals.filter(e => e.status === 'SUPPORTED').length > 0 ? `${hypothesisEvals.filter(e => e.status === 'SUPPORTED').length} hypothèse(s) ont été supportées par les données collectées.` : ''}
-      ${hypothesisEvals.filter(e => e.status === 'CONTRADICTED').length > 0 ? `${hypothesisEvals.filter(e => e.status === 'CONTRADICTED').length} hypothèse(s) ont été contredites et nécessitent une révision.` : ''}
+      ${hypothesisEvals.filter((e) => e.status === 'SUPPORTED').length > 0 ? `${hypothesisEvals.filter((e) => e.status === 'SUPPORTED').length} hypothèse(s) ont été supportées par les données collectées.` : ''}
+      ${hypothesisEvals.filter((e) => e.status === 'CONTRADICTED').length > 0 ? `${hypothesisEvals.filter((e) => e.status === 'CONTRADICTED').length} hypothèse(s) ont été contredites et nécessitent une révision.` : ''}
     </p>
   </div>
 

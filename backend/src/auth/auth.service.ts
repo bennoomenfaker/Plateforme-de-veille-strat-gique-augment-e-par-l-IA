@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
+import { MailService } from '../auth-mail/mail.service';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 
@@ -19,14 +20,18 @@ export class AuthService {
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
+    private mailService: MailService,
   ) {}
 
   // ─── REGISTER INDIVIDUEL ─────────────────────────────────────────────────────
   async register(data: any) {
-    const existing = await this.prisma.user.findUnique({ where: { email: data.email } });
+    const existing = await this.prisma.user.findUnique({
+      where: { email: data.email },
+    });
     if (existing) throw new ConflictException('Email déjà utilisé');
 
-    const hashedPassword = await bcrypt.hash(data.mot_de_passe, 10);
+    const password = data.mot_de_passe || crypto.randomBytes(12).toString('hex');
+    const hashedPassword = await bcrypt.hash(password, 10);
     const user = await this.prisma.user.create({
       data: {
         nom: data.nom,
@@ -38,17 +43,22 @@ export class AuthService {
     });
 
     await this.logActivity(user.id, 'REGISTER', 'user', user.id);
+    const resetToken = await this.generatePasswordResetToken(user.id);
+    this.mailService.sendWelcomeEmail(user.email, user.nom, resetToken).catch(() => {});
     const { mot_de_passe, ...result } = user;
     return result;
   }
 
   // ─── REGISTER ORGANISATION (création ou adhésion) ───────────────────────────
   async registerOrganisation(data: any) {
-    const existing = await this.prisma.user.findUnique({ where: { email: data.email } });
+    const existing = await this.prisma.user.findUnique({
+      where: { email: data.email },
+    });
     if (existing) throw new ConflictException('Email déjà utilisé');
 
     const mode = data.mode === 'JOIN' ? 'JOIN' : 'CREATE';
-    const hashedPassword = await bcrypt.hash(data.mot_de_passe, 10);
+    const password = data.mot_de_passe || crypto.randomBytes(12).toString('hex');
+    const hashedPassword = await bcrypt.hash(password, 10);
 
     if (mode === 'CREATE') {
       const orgExists = await this.prisma.organisation.findUnique({
@@ -88,7 +98,14 @@ export class AuthService {
         },
       });
 
-      await this.logActivity(user.id, 'REGISTER_ORGANISATION', 'organisation', organisation.id);
+      await this.logActivity(
+        user.id,
+        'REGISTER_ORGANISATION',
+        'organisation',
+        organisation.id,
+      );
+      const resetToken = await this.generatePasswordResetToken(user.id);
+      this.mailService.sendWelcomeEmail(user.email, user.nom, resetToken).catch(() => {});
       const { mot_de_passe, ...userResult } = user;
       return {
         user: userResult,
@@ -108,14 +125,18 @@ export class AuthService {
       );
     }
     if (!data.join_code?.trim()) {
-      throw new BadRequestException('Code confidentiel requis pour rejoindre l\'organisation');
+      throw new BadRequestException(
+        "Code confidentiel requis pour rejoindre l'organisation",
+      );
     }
 
     const organisation = await this.prisma.organisation.findUnique({
       where: { nom: data.nom_organisation.trim() },
     });
     if (!organisation) {
-      throw new NotFoundException('Organisation introuvable. Vérifiez le nom exact.');
+      throw new NotFoundException(
+        'Organisation introuvable. Vérifiez le nom exact.',
+      );
     }
 
     const expectedCode =
@@ -146,7 +167,14 @@ export class AuthService {
       },
     });
 
-    await this.logActivity(user.id, 'JOIN_ORGANISATION', 'organisation', organisation.id);
+    await this.logActivity(
+      user.id,
+      'JOIN_ORGANISATION',
+      'organisation',
+      organisation.id,
+    );
+    const resetToken = await this.generatePasswordResetToken(user.id);
+    this.mailService.sendWelcomeEmail(user.email, user.nom, resetToken).catch(() => {});
     const { mot_de_passe, ...userResult } = user;
     return { user: userResult, organisation, role };
   }
@@ -174,10 +202,13 @@ export class AuthService {
       throw new BadRequestException('Invitation propriétaire non autorisée');
     }
 
-    let user = await this.prisma.user.findUnique({ where: { email: invitation.email } });
+    let user = await this.prisma.user.findUnique({
+      where: { email: invitation.email },
+    });
 
     if (!user) {
-      if (!data.mot_de_passe) throw new BadRequestException('Mot de passe requis');
+      if (!data.mot_de_passe)
+        throw new BadRequestException('Mot de passe requis');
       const hashedPassword = await bcrypt.hash(data.mot_de_passe, 10);
       user = await this.prisma.user.create({
         data: {
@@ -193,7 +224,10 @@ export class AuthService {
     const alreadyMember = await this.prisma.membreOrganisation.findFirst({
       where: { organisation_id: invitation.organisation_id, user_id: user.id },
     });
-    if (alreadyMember) throw new BadRequestException('Vous êtes déjà membre de cette organisation');
+    if (alreadyMember)
+      throw new BadRequestException(
+        'Vous êtes déjà membre de cette organisation',
+      );
 
     await this.prisma.membreOrganisation.create({
       data: {
@@ -209,7 +243,12 @@ export class AuthService {
       data: { status: 'ACCEPTED' },
     });
 
-    await this.logActivity(user.id, 'ACCEPT_INVITATION', 'organisation', invitation.organisation_id);
+    await this.logActivity(
+      user.id,
+      'ACCEPT_INVITATION',
+      'organisation',
+      invitation.organisation_id,
+    );
     const { mot_de_passe, ...userResult } = user;
     return {
       message: 'Invitation acceptée',
@@ -230,12 +269,16 @@ export class AuthService {
       },
     });
 
-    if (!user) throw new UnauthorizedException('Email ou mot de passe incorrect');
-    if (user.statut === 'SUSPENDU') throw new UnauthorizedException('Compte suspendu');
-    if (user.statut === 'INACTIF') throw new UnauthorizedException('Compte inactif');
+    if (!user)
+      throw new UnauthorizedException('Email non trouvé');
+    if (user.statut === 'SUSPENDU')
+      throw new UnauthorizedException('Compte suspendu');
+    if (user.statut === 'INACTIF')
+      throw new UnauthorizedException('Compte inactif');
 
     const isValid = await bcrypt.compare(data.mot_de_passe, user.mot_de_passe);
-    if (!isValid) throw new UnauthorizedException('Email ou mot de passe incorrect');
+    if (!isValid)
+      throw new UnauthorizedException('Mot de passe incorrect');
 
     const payload = {
       sub: user.id,
@@ -278,7 +321,10 @@ export class AuthService {
   }
 
   // ─── PROFIL ──────────────────────────────────────────────────────────────────
-  async updateProfile(userId: string, data: { nom?: string; photo_url?: string }) {
+  async updateProfile(
+    userId: string,
+    data: { nom?: string; photo_url?: string },
+  ) {
     const user = await this.prisma.user.update({
       where: { id: userId },
       data: {
@@ -303,7 +349,9 @@ export class AuthService {
       throw new BadRequestException('Mot de passe actuel incorrect');
     }
     if (!data.newPassword || data.newPassword.length < 8) {
-      throw new BadRequestException('Le nouveau mot de passe doit contenir au moins 8 caractères');
+      throw new BadRequestException(
+        'Le nouveau mot de passe doit contenir au moins 8 caractères',
+      );
     }
 
     const hashedPassword = await bcrypt.hash(data.newPassword, 10);
@@ -317,13 +365,21 @@ export class AuthService {
 
   // ─── LOGIN SUPER ADMIN ───────────────────────────────────────────────────────
   async loginSuperAdmin(data: any) {
-    const SUPER_ADMIN_EMAIL = process.env.SUPER_ADMIN_EMAIL || 'admin@veille.com';
-    const SUPER_ADMIN_PASSWORD = process.env.SUPER_ADMIN_PASSWORD || 'SuperAdmin2024!';
+    const SUPER_ADMIN_EMAIL =
+      process.env.SUPER_ADMIN_EMAIL || 'admin@veille.com';
+    const SUPER_ADMIN_PASSWORD =
+      process.env.SUPER_ADMIN_PASSWORD || 'SuperAdmin2024!';
 
-    if (data.email !== SUPER_ADMIN_EMAIL) throw new UnauthorizedException('Accès refusé');
-    if (data.password !== SUPER_ADMIN_PASSWORD) throw new UnauthorizedException('Accès refusé');
+    if (data.email !== SUPER_ADMIN_EMAIL)
+      throw new UnauthorizedException('Accès refusé');
+    if (data.password !== SUPER_ADMIN_PASSWORD)
+      throw new UnauthorizedException('Accès refusé');
 
-    const payload = { sub: 'super-admin', email: SUPER_ADMIN_EMAIL, role: 'SUPER_ADMIN' };
+    const payload = {
+      sub: 'super-admin',
+      email: SUPER_ADMIN_EMAIL,
+      role: 'SUPER_ADMIN',
+    };
     const accessToken = this.jwtService.sign(payload, { expiresIn: '8h' });
     return { access_token: accessToken, role: 'SUPER_ADMIN' };
   }
@@ -363,34 +419,60 @@ export class AuthService {
   async requestPasswordReset(email: string) {
     const user = await this.prisma.user.findUnique({ where: { email } });
     if (!user) return { message: 'Si cet email existe, un lien a été envoyé' };
-    const resetToken = crypto.randomBytes(32).toString('hex');
-    const expires = new Date(Date.now() + 3600000);
-    await this.prisma.refreshToken.create({
-      data: { user_id: user.id, token: `reset_${resetToken}`, expires_at: expires },
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto
+      .createHash('sha256')
+      .update(rawToken)
+      .digest('hex');
+    const expiresAt = new Date(Date.now() + 3600000);
+    await this.prisma.passwordResetToken.create({
+      data: { user_id: user.id, token_hash: tokenHash, expires_at: expiresAt },
     });
-    return { message: 'Token généré', reset_token: resetToken };
+    this.mailService
+      .sendPasswordResetEmail(user.email, rawToken)
+      .catch(() => {});
+    return { message: 'Si cet email existe, un lien a été envoyé' };
   }
 
   // ─── RESET PASSWORD ──────────────────────────────────────────────────────────
   async resetPassword(token: string, newPassword: string) {
-    const stored = await this.prisma.refreshToken.findUnique({
-      where: { token: `reset_${token}` },
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const stored = await this.prisma.passwordResetToken.findFirst({
+      where: {
+        token_hash: tokenHash,
+        used_at: null,
+        expires_at: { gte: new Date() },
+      },
     });
-    if (!stored) throw new UnauthorizedException('Token invalide');
-    if (stored.expires_at < new Date()) {
-      await this.prisma.refreshToken.delete({ where: { token: `reset_${token}` } });
-      throw new UnauthorizedException('Token expiré');
+    if (!stored) throw new BadRequestException('Token invalide ou expiré');
+    if (newPassword.length < 8) {
+      throw new BadRequestException(
+        'Le mot de passe doit contenir au moins 8 caractères',
+      );
     }
     const hashedPassword = await bcrypt.hash(newPassword, 10);
     await this.prisma.user.update({
       where: { id: stored.user_id },
       data: { mot_de_passe: hashedPassword },
     });
-    await this.prisma.refreshToken.delete({ where: { token: `reset_${token}` } });
+    await this.prisma.passwordResetToken.update({
+      where: { id: stored.id },
+      data: { used_at: new Date() },
+    });
     return { message: 'Mot de passe réinitialisé avec succès' };
   }
 
   // ─── HELPERS ─────────────────────────────────────────────────────────────────
+  private async generatePasswordResetToken(userId: string): Promise<string> {
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+    const expiresAt = new Date(Date.now() + 3600000);
+    await this.prisma.passwordResetToken.create({
+      data: { user_id: userId, token_hash: tokenHash, expires_at: expiresAt },
+    });
+    return rawToken;
+  }
+
   private async generateRefreshToken(userId: string): Promise<string> {
     const token = crypto.randomBytes(64).toString('hex');
     const expires = new Date(Date.now() + 7 * 24 * 3600000);
@@ -400,7 +482,12 @@ export class AuthService {
     return token;
   }
 
-  private async logActivity(userId: string, action: string, entityType: string, entityId: string) {
+  private async logActivity(
+    userId: string,
+    action: string,
+    entityType: string,
+    entityId: string,
+  ) {
     try {
       await this.prisma.userActivityLog.create({
         data: { user_id: userId, action, entityType, entityId },

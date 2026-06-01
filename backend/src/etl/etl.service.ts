@@ -14,17 +14,23 @@ export class EtlService {
 
   constructor(private readonly prisma: PrismaService) {}
 
- // @Cron(CronExpression.EVERY_HOUR)
+  // @Cron(CronExpression.EVERY_HOUR)
   async handleScheduledCollection() {
     this.logger.log('Declenchement automatique de la collecte RSS...');
     await this.collectAllSources();
   }
 
-  async collectAllSources(): Promise<{ collected: number; skipped: number; errors: number }> {
+  async collectAllSources(): Promise<{
+    collected: number;
+    skipped: number;
+    errors: number;
+  }> {
     const sources = await this.prisma.source.findMany({
       include: { project: true },
     });
-    let collected = 0, skipped = 0, errors = 0;
+    let collected = 0,
+      skipped = 0,
+      errors = 0;
     for (const source of sources) {
       try {
         const result = await this.collectSource(source.id);
@@ -38,12 +44,16 @@ export class EtlService {
     return { collected, skipped, errors };
   }
 
-  async collectByProject(projectId: string): Promise<{ collected: number; skipped: number; errors: number }> {
+  async collectByProject(
+    projectId: string,
+  ): Promise<{ collected: number; skipped: number; errors: number }> {
     const sources = await this.prisma.source.findMany({
       where: { projectId },
       include: { project: true },
     });
-    let collected = 0, skipped = 0, errors = 0;
+    let collected = 0,
+      skipped = 0,
+      errors = 0;
     for (const source of sources) {
       try {
         const result = await this.collectSourceForProject(source, projectId);
@@ -57,7 +67,10 @@ export class EtlService {
     return { collected, skipped, errors };
   }
 
-  private async collectSourceForProject(source: any, projectId: string): Promise<{ collected: number; skipped: number }> {
+  private async collectSourceForProject(
+    source: any,
+    projectId: string,
+  ): Promise<{ collected: number; skipped: number }> {
     this.logger.log(`Collecte de: ${source.url} pour projet ${projectId}`);
     let feed;
     try {
@@ -66,7 +79,8 @@ export class EtlService {
       throw new Error(`Impossible de parser le flux RSS: ${err.message}`);
     }
 
-    let collected = 0, skipped = 0;
+    let collected = 0,
+      skipped = 0;
     for (const item of feed.items) {
       // Hash unique par projet + lien pour éviter les doublons inter-projets
       const hashInput = `${projectId}_${item.link || item.title || item.guid || ''}`;
@@ -76,7 +90,10 @@ export class EtlService {
         where: { contentHash: hash },
       });
 
-      if (existing) { skipped++; continue; }
+      if (existing) {
+        skipped++;
+        continue;
+      }
 
       const projectKeywords: string[] = (source.project as any)?.keywords ?? [];
       const isRelevant = this.checkKeywordRelevance(
@@ -108,7 +125,9 @@ export class EtlService {
     return { collected, skipped };
   }
 
-  async collectSource(sourceId: string): Promise<{ collected: number; skipped: number }> {
+  async collectSource(
+    sourceId: string,
+  ): Promise<{ collected: number; skipped: number }> {
     const source = await this.prisma.source.findUnique({
       where: { id: sourceId },
       include: { project: true },
@@ -133,7 +152,12 @@ export class EtlService {
     if (!ownerId) return;
     try {
       await this.prisma.userActivityLog.create({
-        data: { user_id: ownerId, action: 'RSS_COLLECT', entityType: 'source', entityId: sourceId },
+        data: {
+          user_id: ownerId,
+          action: 'RSS_COLLECT',
+          entityType: 'source',
+          entityId: sourceId,
+        },
       });
     } catch {}
   }

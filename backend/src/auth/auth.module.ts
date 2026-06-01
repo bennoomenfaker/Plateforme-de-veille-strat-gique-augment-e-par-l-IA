@@ -5,14 +5,16 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './jwt.strategy';
 import { PrismaService } from '../prisma/prisma.service';
+import { AuthMailModule } from '../auth-mail/auth-mail.module';
 
 @Module({
   imports: [
     PassportModule,
     JwtModule.register({
-      secret: 'SECRET_KEY_SUPER_FORTE',
+      secret: process.env.JWT_SECRET || 'SECRET_KEY_SUPER_FORTE',
       signOptions: { expiresIn: '1d' },
     }),
+    AuthMailModule,
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy, PrismaService],

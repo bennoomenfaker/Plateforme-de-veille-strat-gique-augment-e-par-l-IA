@@ -1,4 +1,13 @@
-import { Controller, Get, Post, Delete, Body, Param, UseGuards, Request } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Delete,
+  Body,
+  Param,
+  UseGuards,
+  Request,
+} from '@nestjs/common';
 import { StakeholdersService } from './stakeholders.service';
 import { JwtAuthGuard } from '../auth/jwt.guard';
 
@@ -8,8 +17,16 @@ export class StakeholdersController {
   constructor(private readonly stakeholdersService: StakeholdersService) {}
 
   @Post()
-  add(@Param('projectId') projectId: string, @Body() body: any, @Request() req: any) {
-    return this.stakeholdersService.addStakeholder(projectId, req.user.userId, body);
+  add(
+    @Param('projectId') projectId: string,
+    @Body() body: any,
+    @Request() req: any,
+  ) {
+    return this.stakeholdersService.addStakeholder(
+      projectId,
+      req.user.userId,
+      body,
+    );
   }
 
   @Get()
@@ -19,6 +36,9 @@ export class StakeholdersController {
 
   @Delete(':stakeholderId')
   remove(@Param('stakeholderId') stakeholderId: string, @Request() req: any) {
-    return this.stakeholdersService.removeStakeholder(stakeholderId, req.user.userId);
+    return this.stakeholdersService.removeStakeholder(
+      stakeholderId,
+      req.user.userId,
+    );
   }
 }

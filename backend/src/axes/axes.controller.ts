@@ -1,4 +1,14 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Request } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Put,
+  Delete,
+  Body,
+  Param,
+  UseGuards,
+  Request,
+} from '@nestjs/common';
 import { AxesService } from './axes.service';
 import { JwtAuthGuard } from '../auth/jwt.guard';
 
@@ -8,7 +18,11 @@ export class AxesController {
   constructor(private readonly axesService: AxesService) {}
 
   @Post()
-  create(@Param('objectiveId') objectiveId: string, @Body() body: any, @Request() req: any) {
+  create(
+    @Param('objectiveId') objectiveId: string,
+    @Body() body: any,
+    @Request() req: any,
+  ) {
     return this.axesService.createAxis(objectiveId, req.user.userId, body);
   }
 
@@ -18,7 +32,11 @@ export class AxesController {
   }
 
   @Put(':axisId')
-  update(@Param('axisId') axisId: string, @Body() body: any, @Request() req: any) {
+  update(
+    @Param('axisId') axisId: string,
+    @Body() body: any,
+    @Request() req: any,
+  ) {
     return this.axesService.updateAxis(axisId, req.user.userId, body);
   }
 

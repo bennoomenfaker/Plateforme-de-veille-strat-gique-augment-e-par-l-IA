@@ -10,14 +10,17 @@ import {
   UseInterceptors,
   UploadedFile,
 } from '@nestjs/common';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
+import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { extname, join } from 'path';
 import { existsSync, mkdirSync } from 'fs';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './jwt.guard';
 
-const avatarDir = process.env.UPLOAD_AVATAR_DIR || join(process.cwd(), 'uploads', 'avatars');
+const avatarDir =
+  process.env.UPLOAD_AVATAR_DIR || join(process.cwd(), 'uploads', 'avatars');
 if (!existsSync(avatarDir)) {
   mkdirSync(avatarDir, { recursive: true });
 }
@@ -42,6 +45,8 @@ export class AuthController {
   }
 
   @Post('login')
+  @Throttle({ auth: { limit: 5, ttl: 60000 } })
+  @UseGuards(ThrottlerGuard)
   async login(@Body() body: any) {
     return this.authService.login(body);
   }
@@ -99,7 +104,7 @@ export class AuthController {
   }
 
   @Post('refresh')
-  async refresh(@Body() body: { refresh_token: string }) {
+  async refresh(@Body() body: RefreshTokenDto) {
     return this.authService.refreshToken(body.refresh_token);
   }
 
@@ -110,11 +115,15 @@ export class AuthController {
   }
 
   @Post('forgot-password')
+  @Throttle({ auth: { limit: 3, ttl: 60000 } })
+  @UseGuards(ThrottlerGuard)
   async forgotPassword(@Body() body: { email: string }) {
     return this.authService.requestPasswordReset(body.email);
   }
 
   @Post('reset-password')
+  @Throttle({ auth: { limit: 5, ttl: 60000 } })
+  @UseGuards(ThrottlerGuard)
   async resetPassword(@Body() body: { token: string; new_password: string }) {
     return this.authService.resetPassword(body.token, body.new_password);
   }

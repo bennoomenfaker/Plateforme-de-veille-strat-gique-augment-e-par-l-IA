@@ -4,17 +4,23 @@ import axios from 'axios';
 @Injectable()
 export class LlmProviderService {
   private readonly logger = new Logger(LlmProviderService.name);
-  private readonly ollamaUrl = process.env.OLLAMA_URL || 'http://localhost:11434';
+  private readonly ollamaUrl =
+    process.env.OLLAMA_URL || 'http://localhost:11434';
   private readonly model = process.env.OLLAMA_MODEL || 'mistral';
 
   async generate(prompt: string): Promise<string> {
     try {
-      const res = await axios.post(`${this.ollamaUrl}/api/generate`, {
-        model: this.model,
-        prompt,
-        stream: false,
-        options: { temperature: 0.3, num_predict: 1000 },
-      }, { timeout: 60000 });
+      const res = await axios.post(
+        `${this.ollamaUrl}/api/generate`,
+        {
+          model: this.model,
+          prompt,
+          stream: false,
+          keep_alive: '5m',
+          options: { temperature: 0.3, num_predict: 1000 },
+        },
+        { timeout: 120000 },
+      );
       return res.data.response || '';
     } catch (err) {
       this.logger.error(`Ollama error: ${err.message}`);

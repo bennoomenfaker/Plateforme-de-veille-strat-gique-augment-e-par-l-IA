@@ -33,9 +33,13 @@ export class SchedulerService {
                     project: {
                       include: {
                         organisation: {
-                          include: { members: { where: { role: 'PROPRIETAIRE', statut: 'ACTIF' } } }
-                        }
-                      }
+                          include: {
+                            members: {
+                              where: { role: 'PROPRIETAIRE', statut: 'ACTIF' },
+                            },
+                          },
+                        },
+                      },
                     },
                   },
                 },
@@ -69,7 +73,11 @@ export class SchedulerService {
         }
 
         this.logger.log(`Lancement collecte plan: ${plan.id}`);
-        await this.collectionManager.runCollectionPlan(plan.id, ownerId, 'SCHEDULED');
+        await this.collectionManager.runCollectionPlan(
+          plan.id,
+          ownerId,
+          'SCHEDULED',
+        );
       } catch (error) {
         this.logger.error(`Erreur plan ${plan.id}: ${error.message}`);
       }

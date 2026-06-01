@@ -5,7 +5,9 @@ export class CreatePerimeterDto {
   @IsNotEmpty({ message: 'Le nom est obligatoire' })
   name: string;
 
-  @IsEnum(['GEOGRAPHIC', 'SECTORAL'], { message: 'Type invalide : GEOGRAPHIC ou SECTORAL' })
+  @IsEnum(['GEOGRAPHIC', 'SECTORAL'], {
+    message: 'Type invalide : GEOGRAPHIC ou SECTORAL',
+  })
   type: string;
 
   @IsOptional()

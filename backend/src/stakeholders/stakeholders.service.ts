@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -11,21 +16,41 @@ export class StakeholdersService {
       include: { organisation: { include: { members: true } } },
     });
     if (!project) throw new NotFoundException('Projet introuvable');
-    if (!project.organisation_id) throw new BadRequestException('Les stakeholders sont uniquement pour les projets organisation');
-    if (project.owner_user_id !== userId && !project.organisation?.members.some(m => m.user_id === userId && m.role === 'PROPRIETAIRE')) {
-      throw new ForbiddenException('Seul le propriétaire peut gérer les stakeholders');
+    if (!project.organisation_id)
+      throw new BadRequestException(
+        'Les stakeholders sont uniquement pour les projets organisation',
+      );
+    if (
+      project.owner_user_id !== userId &&
+      !project.organisation?.members.some(
+        (m) => m.user_id === userId && m.role === 'PROPRIETAIRE',
+      )
+    ) {
+      throw new ForbiddenException(
+        'Seul le propriétaire peut gérer les stakeholders',
+      );
     }
 
-    const isMember = project.organisation?.members.some(m => m.user_id === data.user_id);
-    if (!isMember) throw new BadRequestException('L utilisateur doit être membre de l organisation');
+    const isMember = project.organisation?.members.some(
+      (m) => m.user_id === data.user_id,
+    );
+    if (!isMember)
+      throw new BadRequestException(
+        'L utilisateur doit être membre de l organisation',
+      );
 
     const existing = await this.prisma.projectStakeholder.findFirst({
       where: { project_id: projectId, user_id: data.user_id },
     });
-    if (existing) throw new BadRequestException('Cet utilisateur est déjà stakeholder');
+    if (existing)
+      throw new BadRequestException('Cet utilisateur est déjà stakeholder');
 
     return this.prisma.projectStakeholder.create({
-      data: { project_id: projectId, user_id: data.user_id, role: data.role || 'OBSERVATEUR' },
+      data: {
+        project_id: projectId,
+        user_id: data.user_id,
+        role: data.role || 'OBSERVATEUR',
+      },
       include: { user: { select: { id: true, nom: true, email: true } } },
     });
   }
@@ -44,9 +69,13 @@ export class StakeholdersService {
   }
 
   async removeStakeholder(stakeholderId: string, userId: string) {
-    const stakeholder = await this.prisma.projectStakeholder.findUnique({ where: { id: stakeholderId } });
+    const stakeholder = await this.prisma.projectStakeholder.findUnique({
+      where: { id: stakeholderId },
+    });
     if (!stakeholder) throw new NotFoundException('Stakeholder introuvable');
-    await this.prisma.projectStakeholder.delete({ where: { id: stakeholderId } });
+    await this.prisma.projectStakeholder.delete({
+      where: { id: stakeholderId },
+    });
     return { message: 'Stakeholder supprimé' };
   }
 }

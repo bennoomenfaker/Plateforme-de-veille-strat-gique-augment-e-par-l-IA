@@ -2,7 +2,6 @@ import { Injectable } from '@nestjs/common';
 
 @Injectable()
 export class KeywordFilter {
-
   // Filtrage INCLUDE : garder les items qui contiennent au moins un keyword
   filterInclude(items: any[], keywords: string[]): any[] {
     if (!keywords || keywords.length === 0) return items;

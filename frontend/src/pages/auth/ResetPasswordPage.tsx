@@ -1,26 +1,33 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
-import { authService } from '../../services/api';
+import { Link, useParams, useNavigate } from 'react-router-dom';
+import { authService, formatApiError } from '../../services/api';
 
-export default function ForgotPasswordPage() {
-  const [email, setEmail] = useState('');
-  const [sent, setSent] = useState(false);
+export default function ResetPasswordPage() {
+  const { token } = useParams<{ token: string }>();
+  const navigate = useNavigate();
+  const [form, setForm] = useState({ new_password: '', confirm: '' });
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (form.new_password.length < 8) {
+      setError('Le mot de passe doit contenir au moins 8 caractères');
+      return;
+    }
+    if (form.new_password !== form.confirm) {
+      setError('Les mots de passe ne correspondent pas');
+      return;
+    }
     setLoading(true);
     setError('');
     try {
-      await authService.forgotPassword(email);
-      setSent(true);
+      await authService.resetPassword(token!, form.new_password);
+      setSuccess(true);
+      setTimeout(() => navigate('/login'), 3000);
     } catch (err: unknown) {
-      const msg =
-        err && typeof err === 'object' && 'response' in err
-          ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
-          : undefined;
-      setError(msg || 'Une erreur est survenue. Réessayez plus tard.');
+      setError(formatApiError(err, 'Token invalide ou expiré'));
     } finally {
       setLoading(false);
     }
@@ -36,40 +43,57 @@ export default function ForgotPasswordPage() {
             style={{ background: 'linear-gradient(135deg,#3b82f6,#6366f1)' }}>
             <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
             </svg>
           </div>
-          <h1 className="text-2xl font-bold text-white">Mot de passe oublié</h1>
+          <h1 className="text-2xl font-bold text-white">Nouveau mot de passe</h1>
           <p className="text-sm mt-1" style={{ color: '#6b7280' }}>
-            Entrez votre email pour recevoir un lien de réinitialisation
+            Choisissez un nouveau mot de passe sécurisé
           </p>
         </div>
 
         <div className="rounded-2xl p-8" style={{ background: '#161b27', border: '1px solid #1e2535' }}>
-          {sent ? (
+          {success ? (
             <div className="text-center py-4">
-              <div className="text-5xl mb-4">📧</div>
-              <p className="text-white font-semibold mb-2">Email envoyé !</p>
+              <div className="text-5xl mb-4">✅</div>
+              <p className="text-white font-semibold mb-2">Mot de passe réinitialisé !</p>
               <p className="text-sm mb-6" style={{ color: '#6b7280' }}>
-                Si un compte existe avec cette adresse, vous recevrez un email de réinitialisation.
+                Vous allez être redirigé vers la page de connexion.
               </p>
               <Link to="/login"
                 className="text-sm font-semibold"
                 style={{ color: '#60a5fa' }}>
-                ← Retour à la connexion
+                ← Aller à la connexion
               </Link>
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5"
-                  style={{ color: '#9ca3af' }}>Adresse email</label>
+                  style={{ color: '#9ca3af' }}>Nouveau mot de passe</label>
                 <input
-                  type="email"
+                  type="password"
                   required
-                  value={email}
-                  onChange={e => { setEmail(e.target.value); setError(''); }}
-                  placeholder="votre@email.com"
+                  value={form.new_password}
+                  onChange={e => { setForm({ ...form, new_password: e.target.value }); setError(''); }}
+                  placeholder="Minimum 8 caractères"
+                  className="w-full outline-none"
+                  style={{
+                    background: '#0f1117', border: '1px solid #1e2535',
+                    borderRadius: '0.75rem', color: 'white',
+                    padding: '0.625rem 1rem', fontSize: '0.875rem',
+                  }}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5"
+                  style={{ color: '#9ca3af' }}>Confirmer le mot de passe</label>
+                <input
+                  type="password"
+                  required
+                  value={form.confirm}
+                  onChange={e => { setForm({ ...form, confirm: e.target.value }); setError(''); }}
+                  placeholder="Confirmez le mot de passe"
                   className="w-full outline-none"
                   style={{
                     background: '#0f1117', border: '1px solid #1e2535',
@@ -86,7 +110,7 @@ export default function ForgotPasswordPage() {
               <button type="submit" disabled={loading}
                 className="w-full py-2.5 rounded-xl text-sm font-bold text-white disabled:opacity-50"
                 style={{ background: 'linear-gradient(135deg,#3b82f6,#6366f1)' }}>
-                {loading ? 'Envoi...' : 'Envoyer le lien'}
+                {loading ? 'Réinitialisation...' : 'Réinitialiser le mot de passe'}
               </button>
               <div className="text-center pt-2">
                 <Link to="/login" className="text-xs" style={{ color: '#6b7280' }}>

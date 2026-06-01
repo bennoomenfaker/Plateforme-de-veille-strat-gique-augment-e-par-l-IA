@@ -17,7 +17,12 @@ export class AlertesService {
   async checkAllAlerts(): Promise<{ created: number }> {
     const projects = await this.prisma.project.findMany({
       where: { isActive: true, is_deleted: false },
-      select: { id: true, nom: true, owner_user_id: true, organisation_id: true },
+      select: {
+        id: true,
+        nom: true,
+        owner_user_id: true,
+        organisation_id: true,
+      },
     });
 
     let created = 0;
@@ -33,7 +38,11 @@ export class AlertesService {
     if (project.owner_user_id) return project.owner_user_id;
     if (project.organisation_id) {
       const owner = await this.prisma.membreOrganisation.findFirst({
-        where: { organisation_id: project.organisation_id, role: 'PROPRIETAIRE', statut: 'ACTIF' },
+        where: {
+          organisation_id: project.organisation_id,
+          role: 'PROPRIETAIRE',
+          statut: 'ACTIF',
+        },
         select: { user_id: true },
       });
       return owner?.user_id ?? null;
@@ -90,7 +99,10 @@ export class AlertesService {
       }
 
       // Alerte nouveau contenu pertinent (>= 0.6)
-      if ((item.relevance_score ?? 0) >= 0.6 && item.hypothesis_impact === 'SUPPORTED') {
+      if (
+        (item.relevance_score ?? 0) >= 0.6 &&
+        item.hypothesis_impact === 'SUPPORTED'
+      ) {
         const key = `relevant:${item.id}`;
         const exists = await this.prisma.alert.findFirst({
           where: { projectId: project.id, message: { contains: key } },
@@ -123,7 +135,8 @@ export class AlertesService {
       this.prisma.alert.findMany({
         where: { userId },
         orderBy: { createdAt: 'desc' },
-        skip, take: limit,
+        skip,
+        take: limit,
         include: { project: { select: { nom: true } } },
       }),
       this.prisma.alert.count({ where: { userId } }),

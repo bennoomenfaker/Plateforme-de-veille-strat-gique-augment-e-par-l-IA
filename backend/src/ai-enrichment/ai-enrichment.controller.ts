@@ -26,11 +26,16 @@ export class AiEnrichmentController {
     @Query('impact') impact?: string,
     @Query('min_score') minScore?: string,
   ) {
-    return this.aiService.getEnrichedItems(projectId, parseInt(page), parseInt(limit), {
-      hypothesis_id: hypothesisId,
-      impact,
-      min_score: minScore != null ? parseFloat(minScore) : undefined,
-    });
+    return this.aiService.getEnrichedItems(
+      projectId,
+      parseInt(page),
+      parseInt(limit),
+      {
+        hypothesis_id: hypothesisId,
+        impact,
+        min_score: minScore != null ? parseFloat(minScore) : undefined,
+      },
+    );
   }
 
   @Get('projects/:projectId/enrichment-jobs')

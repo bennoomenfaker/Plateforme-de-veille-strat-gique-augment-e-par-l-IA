@@ -1,4 +1,13 @@
-import { Controller, Post, Get, Param, Query, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Param,
+  Query,
+  UseGuards,
+  HttpCode,
+  HttpStatus,
+} from '@nestjs/common';
 import { EtlService } from './etl.service';
 import { JwtAuthGuard } from '../auth/jwt.guard';
 
@@ -34,6 +43,10 @@ export class EtlController {
     @Query('page') page = '1',
     @Query('limit') limit = '20',
   ) {
-    return this.etlService.getRawDataByProject(projectId, parseInt(page), parseInt(limit));
+    return this.etlService.getRawDataByProject(
+      projectId,
+      parseInt(page),
+      parseInt(limit),
+    );
   }
 }

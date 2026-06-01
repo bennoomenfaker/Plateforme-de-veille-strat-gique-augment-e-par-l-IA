@@ -23,10 +23,7 @@ export class AdminController {
   }
 
   @Get('users')
-  async getUsers(
-    @Query('page') page = '1',
-    @Query('limit') limit = '20',
-  ) {
+  async getUsers(@Query('page') page = '1', @Query('limit') limit = '20') {
     return this.adminService.getAllUsers(parseInt(page), parseInt(limit));
   }
 
@@ -50,7 +47,10 @@ export class AdminController {
     @Query('page') page = '1',
     @Query('limit') limit = '20',
   ) {
-    return this.adminService.getAllOrganisations(parseInt(page), parseInt(limit));
+    return this.adminService.getAllOrganisations(
+      parseInt(page),
+      parseInt(limit),
+    );
   }
 
   @Get('organisations/:id')
@@ -59,7 +59,10 @@ export class AdminController {
   }
 
   @Patch('organisations/:id')
-  async updateOrganisation(@Param('id') id: string, @Body() body: { nom?: string }) {
+  async updateOrganisation(
+    @Param('id') id: string,
+    @Body() body: { nom?: string },
+  ) {
     return this.adminService.updateOrganisation(id, body);
   }
 
@@ -69,7 +72,11 @@ export class AdminController {
     @Param('memberId') memberId: string,
     @Body() body: { role: string },
   ) {
-    return this.adminService.updateOrganisationMemberRole(orgId, memberId, body.role);
+    return this.adminService.updateOrganisationMemberRole(
+      orgId,
+      memberId,
+      body.role,
+    );
   }
 
   @Delete('organisations/:orgId/members/:memberId')
@@ -86,10 +93,7 @@ export class AdminController {
   }
 
   @Get('logs')
-  async getLogs(
-    @Query('page') page = '1',
-    @Query('limit') limit = '50',
-  ) {
+  async getLogs(@Query('page') page = '1', @Query('limit') limit = '50') {
     return this.adminService.getActivityLogs(parseInt(page), parseInt(limit));
   }
 
