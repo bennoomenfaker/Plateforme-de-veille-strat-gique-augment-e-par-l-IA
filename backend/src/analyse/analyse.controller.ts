@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Param, Query, UseGuards, Request } from '@nestjs/common';
 import { AnalyseService } from './analyse.service';
 import { JwtAuthGuard } from '../auth/jwt.guard';
 
@@ -36,5 +36,24 @@ export class AnalyseController {
   @Get('dashboard/:id')
   getDashboard(@Param('id') id: string) {
     return this.analyseService.getProjectDashboard(id);
+  }
+
+  @Get('user-dashboard')
+  getUserDashboard(
+    @Request() req: any,
+    @Query('period') period = '30d',
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('compareStart') compareStart?: string,
+    @Query('compareEnd') compareEnd?: string,
+  ) {
+    return this.analyseService.getUserDashboard(
+      req.user.userId,
+      period,
+      startDate,
+      endDate,
+      compareStart,
+      compareEnd,
+    );
   }
 }

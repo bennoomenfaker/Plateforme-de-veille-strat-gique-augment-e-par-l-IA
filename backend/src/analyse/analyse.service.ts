@@ -292,6 +292,146 @@ export class AnalyseService {
     };
   }
 
+  async getUserDashboard(
+    userId: string,
+    period = '30d',
+    startDate?: string,
+    endDate?: string,
+    compareStart?: string,
+    compareEnd?: string,
+  ) {
+    const now = endDate ? new Date(endDate) : new Date();
+    let currentStart: Date;
+
+    if (period === 'custom' && startDate) {
+      currentStart = new Date(startDate);
+    } else {
+      const days = period === '7d' ? 7 : period === '90d' ? 90 : 30;
+      currentStart = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+    }
+
+    const projectIds = await this.getUserProjectIds(userId);
+    const current = await this.computeDashboardData(projectIds, currentStart, now);
+
+    let previous = null;
+    if (compareStart && compareEnd) {
+      previous = await this.computeDashboardData(
+        projectIds,
+        new Date(compareStart),
+        new Date(compareEnd),
+      );
+    }
+
+    return { current, previous, period, startDate, endDate };
+  }
+
+  private async getUserProjectIds(userId: string): Promise<string[]> {
+    const individual = await this.prisma.project.findMany({
+      where: { owner_user_id: userId, is_deleted: false, isActive: true },
+      select: { id: true },
+    });
+    const memberships = await this.prisma.membreOrganisation.findMany({
+      where: { user_id: userId, statut: 'ACTIF' },
+      select: { organisation_id: true },
+    });
+    let org: { id: string }[] = [];
+    if (memberships.length) {
+      org = await this.prisma.project.findMany({
+        where: {
+          organisation_id: { in: memberships.map((m) => m.organisation_id) },
+          is_deleted: false,
+          isActive: true,
+        },
+        select: { id: true },
+      });
+    }
+    return [...individual, ...org].map((p) => p.id);
+  }
+
+  private async computeDashboardData(projectIds: string[], start: Date, end: Date) {
+    const enrichedItems = await this.prisma.enrichedItem.findMany({
+      where: {
+        project_id: { in: projectIds },
+        enriched_at: { gte: start, lte: end },
+      },
+    });
+
+    const sentiments = { POSITIF: 0, NEGATIF: 0, NEUTRE: 0 };
+    const entityFreq: Record<string, number> = {};
+    const topicFreq: Record<string, number> = {};
+    const entityItems: Record<string, Set<string>> = {};
+    let totalRelevance = 0;
+
+    for (const item of enrichedItems) {
+      if (item.sentiment && sentiments[item.sentiment] !== undefined)
+        sentiments[item.sentiment]++;
+
+      if (item.relevance_score) totalRelevance += item.relevance_score;
+
+      if (Array.isArray(item.entities)) {
+        for (const e of item.entities as string[]) {
+          entityFreq[e] = (entityFreq[e] || 0) + 1;
+          if (!entityItems[e]) entityItems[e] = new Set();
+          entityItems[e].add(item.id);
+        }
+      }
+      if (Array.isArray(item.topics)) {
+        for (const t of item.topics as string[]) {
+          topicFreq[t] = (topicFreq[t] || 0) + 1;
+        }
+      }
+    }
+
+    const wordCloud = [
+      ...Object.entries(entityFreq).map(([text, value]) => ({ text, value })),
+      ...Object.entries(topicFreq).map(([text, value]) => ({ text, value })),
+    ]
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 50);
+
+    const entityNames = Object.keys(entityFreq);
+    const entityNodes = entityNames.slice(0, 30).map((name, i) => ({
+      id: `e-${i}`,
+      name,
+      count: entityFreq[name],
+    }));
+
+    const topEntitySet = new Set(entityNodes.map((n) => n.name));
+    const entityEdges: { source: string; target: string; weight: number }[] = [];
+    const topNames = entityNodes.map((n) => n.name);
+    for (let i = 0; i < topNames.length; i++) {
+      for (let j = i + 1; j < topNames.length; j++) {
+        const a = topNames[i];
+        const b = topNames[j];
+        const shared = [...(entityItems[a] || [])].filter((id) =>
+          (entityItems[b] || new Set()).has(id),
+        ).length;
+        if (shared > 0) {
+          entityEdges.push({
+            source: `e-${i}`,
+            target: `e-${j}`,
+            weight: shared,
+          });
+        }
+      }
+    }
+
+    const enrichedCount = enrichedItems.length;
+    const avgRelevance = enrichedCount > 0 ? totalRelevance / enrichedCount : 0;
+
+    return {
+      overview: {
+        total_enriched: enrichedCount,
+        avg_relevance: Math.round(avgRelevance * 100) / 100,
+        unique_entities: entityNames.length,
+        sentiments_total: sentiments.POSITIF + sentiments.NEGATIF + sentiments.NEUTRE,
+      },
+      sentiments,
+      wordCloud,
+      entityNetwork: { nodes: entityNodes, edges: entityEdges },
+    };
+  }
+
   private detectSentiment(text: string): string {
     const pos = [
       'croissance',

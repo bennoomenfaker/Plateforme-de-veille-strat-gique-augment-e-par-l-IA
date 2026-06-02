@@ -316,6 +316,13 @@ export const analyseService = {
       params: { page, limit, sentiment: sentiment && sentiment !== 'TOUS' ? sentiment : undefined },
     }),
   getStats: (projectId: string) => api.get(`/analyse/stats/${projectId}`),
+  getUserDashboard: (params: {
+    period?: string;
+    startDate?: string;
+    endDate?: string;
+    compareStart?: string;
+    compareEnd?: string;
+  }) => api.get('/analyse/user-dashboard', { params }),
 };
 
 // --- 13. ADMIN ---
