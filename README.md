@@ -30,7 +30,7 @@ Plateforme complète de **veille stratégique** (technologique, concurrentielle,
 | Frontend | React 19, TypeScript, Vite 8, Tailwind CSS 4 |
 | Backend | NestJS 10, TypeScript, Prisma ORM |
 | Base de données | PostgreSQL 15 |
-| LLM | Ollama (Mistral) |
+| LLM | Ollama (Mistral) + Mistral API + Groq API (fallback chain) |
 | Auth | JWT (access + refresh tokens) |
 | Email | Nodemailer (SMTP Gmail) |
 | Conteneurisation | Docker Compose |
@@ -44,8 +44,9 @@ Plateforme complète de **veille stratégique** (technologique, concurrentielle,
 - Définition d'hypothèses par axe
 - Périmètres géographiques et sectoriels
 - Plans de collecte avec sources (RSS, Web, API, PDF)
-- Clôture et archivage des projets
+- Clôture, réouverture et archivage des projets
 - Duplication complète d'un projet avec toute sa hiérarchie
+- Suppression définitive d'un projet
 - Vue liste avec onglets Actifs / Clôturés-Archivés
 
 ### Collecte de données
@@ -56,20 +57,21 @@ Plateforme complète de **veille stratégique** (technologique, concurrentielle,
 
 ### Traitement & Enrichissement IA
 - Nettoyage des données brutes (extraction contenu, détection langue)
-- Enrichissement via Ollama (Mistral) :
-  - Résumé automatique
-  - Analyse de sentiment (POSITIF/NÉGATIF/NEUTRE)
-  - Extraction d'entités et topics
-  - Score de pertinence et confiance
-  - Impact sur les hypothèses
+- Enrichissement automatique avec fallback multi-provider :
+  - **Ollama** (local, Mistral)
+  - **Mistral API** (`mistral-large-latest`)
+  - **Groq API** (`llama-3.3-70b-versatile`)
+  - Résumé automatique, analyse de sentiment, extraction d'entités/topics
+  - Score de pertinence et confiance, impact sur les hypothèses
 - Évaluation des hypothèses basée sur les preuves collectées
-- Pipeline multi-modèle avec fallback
+- Pipeline multi-modèle avec fallback automatique
 
 ### Visualisation & Analyse
 - Dashboard avec graphiques (lignes, camemberts, barres)
 - Vue arborescente ReactFlow (Projet → Objectifs → Axes → Hypothèses)
 - Analyse stratégique avec scores par objectif/axe/hypothèse
-- Export de rapport HTML
+- Export de rapport HTML et CSV des données enrichies
+- Vue Kanban des hypothèses par statut (OPEN → SUPPORTED/CONTRADICTED)
 
 ### Collaboration
 - Utilisateurs individuels ou en organisation
@@ -179,6 +181,9 @@ veille/
 | `PATCH` | `/projects/:id/archive` | Archiver un projet |
 | `DELETE` | `/projects/:id` | Supprimer un projet |
 | `POST` | `/projects/:id/duplicate` | Dupliquer un projet |
+| `PATCH` | `/projects/:id/reopen` | Rouvrir un projet clôturé |
+| `GET` | `/projects/:id/export-csv` | Export CSV des données enrichies |
+| `GET` | `/projects/:id/hypothesis-evaluations` | Évaluations des hypothèses |
 | `POST` | `/projects/:id/objectives` | Ajouter un objectif |
 | `POST` | `/objectives/:id/axes` | Ajouter un axe |
 | `POST` | `/axes/:id/hypotheses` | Ajouter une hypothèse |
