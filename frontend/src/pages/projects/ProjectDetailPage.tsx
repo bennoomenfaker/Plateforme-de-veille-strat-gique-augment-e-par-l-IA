@@ -32,7 +32,7 @@ export default function ProjectDetailPage() {
 
   const [analysing, setAnalysing]   = useState(false);
   const [analyseMsg, setAnalyseMsg] = useState('');
-  const [activeTab, setActiveTab]   = useState<'veille' | 'cadrage'>('cadrage');
+  const [activeTab, setActiveTab]   = useState<'veille' | 'cadrage' | 'suivi'>('cadrage');
   const [expandedObjectives, setExpandedObjectives] = useState<Record<string, boolean>>({});
   const [expandedAxes, setExpandedAxes] = useState<Record<string, boolean>>({});
   const [expandedHypotheses, setExpandedHypotheses] = useState<Record<string, boolean>>({});
@@ -60,6 +60,11 @@ export default function ProjectDetailPage() {
   const { data: stats, refetch: refetchStats } = useQuery({
     queryKey: ['stats', id],
     queryFn: () => api.get(`/analyse/stats/${id}`).then(r => r.data),
+  });
+
+  const { data: evaluations } = useQuery({
+    queryKey: ['hypothesis-evaluations', id],
+    queryFn: () => api.get(`/projects/${id}/hypothesis-evaluations`).then(r => r.data),
   });
 
   useEffect(() => {
@@ -137,6 +142,14 @@ export default function ProjectDetailPage() {
 
   const closeMutation = useMutation({
     mutationFn: () => api.patch(`/projects/${id}/close`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project', id] });
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+    },
+  });
+
+  const reopenMutation = useMutation({
+    mutationFn: () => api.patch(`/projects/${id}/reopen`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['project', id] });
       queryClient.invalidateQueries({ queryKey: ['projects'] });
@@ -301,6 +314,27 @@ export default function ProjectDetailPage() {
                 {closeMutation.isPending ? '...' : 'Clôturer'}
               </button>
             )}
+
+            {/* Rouvrir (si projet clôturé) */}
+            {canCreateOrModify && !project?.isActive && project?.end_date && (
+              <button
+                onClick={() => { if (window.confirm('Rouvrir ce projet ?')) reopenMutation.mutate(); }}
+                disabled={reopenMutation.isPending}
+                className="text-sm font-semibold px-4 py-2 rounded-xl transition"
+                style={{ border: '1px solid rgba(16,185,129,0.3)', color: '#34d399' }}
+              >
+                {reopenMutation.isPending ? '...' : 'Rouvrir'}
+              </button>
+            )}
+
+            {/* Export CSV */}
+            <button
+              onClick={() => window.open(`/api/projects/${id}/export-csv`, '_blank')}
+              className="text-sm font-semibold px-4 py-2 rounded-xl transition"
+              style={{ border: '1px solid #1e2535', color: '#9ca3af' }}
+            >
+              Export CSV
+            </button>
 
             {/* Supprimer */}
             {canCreateOrModify && (
@@ -522,6 +556,7 @@ export default function ProjectDetailPage() {
           {[
             { key: 'cadrage', label: 'Structure & Cadrage' },
             { key: 'veille',  label: 'Collecte & Analyse'  },
+            { key: 'suivi',   label: 'Suivi des hypothèses' },
           ].map(tab => (
             <button key={tab.key} onClick={() => setActiveTab(tab.key as any)}
               className="px-4 py-2 rounded-xl text-sm font-semibold transition"
@@ -533,6 +568,65 @@ export default function ProjectDetailPage() {
             </button>
           ))}
         </div>
+
+        {/* ── TAB : SUIVI DES HYPOTHÈSES (Kanban) ──────────────────────────────── */}
+        {activeTab === 'suivi' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-lg font-bold text-white">Suivi des hypothèses</h2>
+            </div>
+            {(!evaluations || evaluations.length === 0) ? (
+              <div className="rounded-2xl py-12 text-center" style={cardStyle}>
+                <p className="text-sm font-medium text-white mb-1">Aucune évaluation d'hypothèse</p>
+                <p className="text-xs" style={{ color: '#6b7280' }}>Lancez l'enrichissement IA pour générer des évaluations</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-3 min-h-[400px]">
+                {[
+                  { key: 'OPEN', label: 'À évaluer', color: '#6b7280', bg: 'rgba(107,114,128,0.1)' },
+                  { key: 'NEEDS_MORE_RESEARCH', label: 'Plus de données', color: '#fbbf24', bg: 'rgba(251,191,36,0.1)' },
+                  { key: 'PARTIALLY_SUPPORTED', label: 'Partiellement soutenu', color: '#fb923c', bg: 'rgba(251,146,60,0.1)' },
+                  { key: 'SUPPORTED', label: 'Soutenu', color: '#34d399', bg: 'rgba(16,185,129,0.1)' },
+                  { key: 'CONTRADICTED', label: 'Contredit', color: '#f87171', bg: 'rgba(239,68,68,0.1)' },
+                ].map(col => {
+                  const items = evaluations.filter((e: any) => e.status === col.key);
+                  return (
+                    <div key={col.key} className="rounded-xl p-3" style={{ background: '#0f1117', border: '1px solid #1e2535' }}>
+                      <div className="flex items-center justify-between mb-3">
+                        <p className="text-xs font-bold uppercase tracking-wider" style={{ color: col.color }}>{col.label}</p>
+                        <span className="text-xs px-2 py-0.5 rounded-full font-bold"
+                          style={{ background: col.bg, color: col.color }}>{items.length}</span>
+                      </div>
+                      <div className="space-y-2 max-h-[600px] overflow-y-auto">
+                        {items.length === 0 ? (
+                          <p className="text-xs text-center py-4" style={{ color: '#4b5568' }}>—</p>
+                        ) : items.map((ev: any) => {
+                          const hyp = objectives
+                            .flatMap((o: any) => o.axes || [])
+                            .flatMap((a: any) => a.hypotheses || [])
+                            .find((h: any) => h.id === ev.hypothesis_id);
+                          return (
+                            <div key={ev.id} className="rounded-lg p-3 cursor-pointer transition hover:bg-white/[0.03]"
+                              style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid #1e2535', borderLeft: `3px solid ${col.color}` }}>
+                              <p className="text-xs font-medium text-white mb-1 leading-relaxed">
+                                {hyp?.content || '(hypothèse supprimée)'}
+                              </p>
+                              <div className="flex items-center gap-2 text-[10px]" style={{ color: '#6b7280' }}>
+                                <span>Conf: {ev.confidence ? Math.round(ev.confidence * 100) : '—'}%</span>
+                                <span>·</span>
+                                <span>{ev.evidence_count || 0} preuve(s)</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* ── TAB : CADRAGE ───────────────────────────────────────────────────── */}
         {activeTab === 'cadrage' && (

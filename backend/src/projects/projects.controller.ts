@@ -9,7 +9,9 @@ import {
   Param,
   UseGuards,
   Request,
+  Res,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { ProjectsService } from './projects.service';
 import { JwtAuthGuard } from '../auth/jwt.guard';
 
@@ -52,6 +54,15 @@ export class ProjectsController {
     return this.projectsService.getArchivedProjects(req.user.userId);
   }
 
+  // GET /projects/:id/export-csv → exporter les données enrichies
+  @Get(':id/export-csv')
+  async exportCsv(@Param('id') id: string, @Request() req: any, @Res() res: Response) {
+    const csv = await this.projectsService.exportCsv(id, req.user.userId);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="export-${id.slice(0, 8)}.csv"`);
+    res.send(csv);
+  }
+
   // GET /projects/:id → détail projet
   @Get(':id')
   async findOne(@Param('id') id: string, @Request() req: any) {
@@ -72,6 +83,12 @@ export class ProjectsController {
   @Patch(':id/close')
   async close(@Param('id') id: string, @Request() req: any) {
     return this.projectsService.closeProject(id, req.user.userId);
+  }
+
+  // PATCH /projects/:id/reopen → rouvrir
+  @Patch(':id/reopen')
+  async reopen(@Param('id') id: string, @Request() req: any) {
+    return this.projectsService.reopenProject(id, req.user.userId);
   }
 
   // PATCH /projects/:id/archive → archiver

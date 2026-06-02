@@ -114,7 +114,7 @@ export class AiEnrichmentService {
               hypothesis_impact: parsed.hypothesis_impact || 'OPEN',
               confidence_score: parsed.confidence_score || null,
               raw_response: parsed,
-              model_used: process.env.OLLAMA_MODEL || 'mistral',
+              model_used: this.llm.primaryModel,
               prompt_version: '1.0',
             },
           });
@@ -225,7 +225,7 @@ export class AiEnrichmentService {
             hypothesis_impact: parsed.hypothesis_impact || 'OPEN',
             confidence_score: parsed.confidence_score || null,
             raw_response: parsed,
-            model_used: process.env.OLLAMA_MODEL || 'mistral',
+            model_used: this.llm.primaryModel,
             prompt_version: '1.0',
           },
         });

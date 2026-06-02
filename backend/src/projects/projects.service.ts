@@ -253,6 +253,16 @@ export class ProjectsService {
     return closed;
   }
 
+  async reopenProject(id: string, userId: string) {
+    await this.checkWriteAccess(id, userId);
+    const reopened = await this.prisma.project.update({
+      where: { id },
+      data: { isActive: true, end_date: null },
+    });
+    await this.logActivity(userId, 'REOPEN_PROJECT', 'project', id);
+    return reopened;
+  }
+
   async archiveProject(id: string, userId: string) {
     await this.checkWriteAccess(id, userId);
     const archived = await this.prisma.project.update({
@@ -448,6 +458,23 @@ export class ProjectsService {
 
       return newProject;
     });
+  }
+
+  async exportCsv(projectId: string, userId: string): Promise<string> {
+    await this.checkAccess(projectId, userId);
+    const items = await this.prisma.enrichedItem.findMany({
+      where: { project_id: projectId },
+      orderBy: { enriched_at: 'desc' },
+    });
+
+    const header = 'title,summary,sentiment,relevance,confidence,hypothesis_impact,model_used,enriched_at\n';
+    const rows = items.map((item) => {
+      const title = (item.summary || '').replace(/"/g, '""').slice(0, 100);
+      const summary = (item.summary || '').replace(/"/g, '""').slice(0, 200);
+      return `"${title}","${summary}",${item.sentiment},${item.relevance_score ?? ''},${item.confidence_score ?? ''},${item.hypothesis_impact || ''},${item.model_used || ''},${item.enriched_at?.toISOString() || ''}`;
+    });
+
+    return header + rows.join('\n');
   }
 
   private async logActivity(
