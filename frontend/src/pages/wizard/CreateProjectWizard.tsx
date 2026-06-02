@@ -57,7 +57,7 @@ export default function CreateProjectWizard() {
   const [perimeters,  setPerimeters]  = useState(session?.perimeters  ?? []);
   const [plans,       setPlans]       = useState(session?.plans       ?? []);
   const [projectForm, setProjectForm] = useState(session?.projectForm ?? {
-    nom: '', description: '', monitoring_type: 'TECHNOLOGICAL', frequency: 'DAILY', folder_id: '',
+    nom: '', description: '', monitoring_type: 'TECHNOLOGICAL', folder_id: '',
   });
 
   const [objForm,    setObjForm]    = useState({ content: '' });
@@ -65,10 +65,10 @@ export default function CreateProjectWizard() {
   const [hypForm,    setHypForm]    = useState({ content: '', axis_id: '' });
   const [perimForm,  setPerimForm]  = useState({ name: '', type: 'GEOGRAPHIC', parent_id: '' });
   const [planForm,   setPlanForm]   = useState({
-    question: '', collection_start_date: '',
+    question: '', frequency: 'DAILY', collection_start_date: '',
     collection_end_date: '', hypothesis_id: '', sources: [] as any[], keywords: [] as any[],
   });
-  const [sourceForm, setSourceForm] = useState({ source_type: 'RSS', source_label: '', source_url: '' });
+  const [sourceForm, setSourceForm] = useState({ source_type: 'RSS', source_label: '', source_url: '', frequency: 'DAILY' });
   const [kwForm,     setKwForm]     = useState({ keyword: '', keyword_type: 'INCLUDE' });
 
   // Sauvegarder dans sessionStorage à chaque changement d'état important
@@ -96,7 +96,7 @@ export default function CreateProjectWizard() {
       const res = await api.post('/projects', {
         nom: projectForm.nom, description: projectForm.description,
         monitoring_type: projectForm.monitoring_type,
-        frequency: projectForm.frequency, folder_id: projectForm.folder_id || null,
+        folder_id: projectForm.folder_id || null,
       });
       setProjectId(res.data.id);
       setStep(2);
@@ -195,7 +195,7 @@ export default function CreateProjectWizard() {
     setLoading(true); setError('');
     try {
       const res = await api.post(`/hypotheses/${planForm.hypothesis_id}/collection-plans`, {
-        question: planForm.question, frequency: projectForm.frequency,
+        question: planForm.question, frequency: planForm.frequency,
         collection_start_date: planForm.collection_start_date || null,
         collection_end_date: planForm.collection_end_date || null,
       });
@@ -207,7 +207,7 @@ export default function CreateProjectWizard() {
         await api.post(`/collection-plans/${planId}/keywords`, kw);
       }
       setPlans([...plans, { ...res.data, sources: planForm.sources, keywords: planForm.keywords }]);
-      setPlanForm({ question: '', collection_start_date: '', collection_end_date: '', hypothesis_id: '', sources: [], keywords: [] });
+      setPlanForm({ question: '', frequency: 'DAILY', collection_start_date: '', collection_end_date: '', hypothesis_id: '', sources: [], keywords: [] });
     } catch (e: any) { setError(e.response?.data?.message || 'Erreur plan de collecte'); }
     finally { setLoading(false); }
   };
@@ -296,24 +296,12 @@ export default function CreateProjectWizard() {
                   onChange={e => setProjectForm({ ...projectForm, description: e.target.value })}
                   placeholder="Objectif de ce projet..." />
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  {label('Type de veille *')}
-                  <select style={inputStyle} value={projectForm.monitoring_type}
-                    onChange={e => setProjectForm({ ...projectForm, monitoring_type: e.target.value })}>
-                    {MONITORING_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-                  </select>
-                </div>
-                <div>
-                  {label('Fréquence *')}
-                  <select style={inputStyle} value={projectForm.frequency}
-                    onChange={e => setProjectForm({ ...projectForm, frequency: e.target.value })}>
-                    <option value="ON_DEMAND">À la demande</option>
-                    <option value="DAILY">Quotidienne</option>
-                    <option value="WEEKLY">Hebdomadaire</option>
-                    <option value="MONTHLY">Mensuelle</option>
-                  </select>
-                </div>
+              <div>
+                {label('Type de veille *')}
+                <select style={inputStyle} value={projectForm.monitoring_type}
+                  onChange={e => setProjectForm({ ...projectForm, monitoring_type: e.target.value })}>
+                  {MONITORING_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                </select>
               </div>
             </div>
             <div className="flex justify-end mt-6">
@@ -565,6 +553,16 @@ export default function CreateProjectWizard() {
                   onChange={e => setPlanForm({ ...planForm, question: e.target.value })}
                   placeholder="Ex: Quelles sont les dernières publications sur les LLM ?" />
               </div>
+              <div>
+                {label('Fréquence de collecte *')}
+                <select style={inputStyle} value={planForm.frequency}
+                  onChange={e => setPlanForm({ ...planForm, frequency: e.target.value })}>
+                  <option value="ON_DEMAND">À la demande</option>
+                  <option value="DAILY">Quotidienne</option>
+                  <option value="WEEKLY">Hebdomadaire</option>
+                  <option value="MONTHLY">Mensuelle</option>
+                </select>
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   {label('Début collecte')}
@@ -625,10 +623,20 @@ export default function CreateProjectWizard() {
                       Les documents PDF peuvent être uploadés depuis la page du plan de collecte après la création du projet.
                     </div>
                   )}
+                  <div>
+                    {label('Fréquence de collecte')}
+                    <select style={inputStyle} value={sourceForm.frequency}
+                      onChange={e => setSourceForm({ ...sourceForm, frequency: e.target.value })}>
+                      <option value="ON_DEMAND">À la demande</option>
+                      <option value="DAILY">Quotidienne</option>
+                      <option value="WEEKLY">Hebdomadaire</option>
+                      <option value="MONTHLY">Mensuelle</option>
+                    </select>
+                  </div>
                   <button onClick={() => {
                     if (sourceForm.source_label) {
                       setPlanForm({ ...planForm, sources: [...planForm.sources, { ...sourceForm }] });
-                      setSourceForm({ source_type: 'RSS', source_label: '', source_url: '' });
+                      setSourceForm({ source_type: 'RSS', source_label: '', source_url: '', frequency: 'DAILY' });
                     }
                   }} className="w-full py-2 rounded-xl text-sm font-bold text-white"
                     style={{ background: '#3b82f6' }}>+ Ajouter la source</button>

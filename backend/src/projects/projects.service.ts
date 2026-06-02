@@ -1,7 +1,6 @@
 import {
   Injectable,
   ForbiddenException,
-  NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
@@ -271,6 +270,71 @@ export class ProjectsService {
     });
     await this.logActivity(userId, 'DELETE_PROJECT', 'project', id);
     return { message: 'Projet supprimé avec succès' };
+  }
+
+  async getGraphData(userId: string) {
+    const individualProjects = await this.prisma.project.findMany({
+      where: {
+        owner_user_id: userId,
+        organisation_id: null,
+        is_deleted: false,
+      },
+      include: {
+        perimeters: true,
+        objectives: {
+          include: {
+            axes: {
+              include: {
+                hypotheses: {
+                  include: {
+                    collection_plans: {
+                      include: { sources: true, keywords: true },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          orderBy: { priority: 'asc' },
+        },
+      },
+    });
+
+    const memberships = await this.prisma.membreOrganisation.findMany({
+      where: { user_id: userId, statut: 'ACTIF' },
+      select: { organisation_id: true },
+    });
+
+    let orgProjects: any[] = [];
+    if (memberships.length) {
+      orgProjects = await this.prisma.project.findMany({
+        where: {
+          organisation_id: { in: memberships.map((m) => m.organisation_id) },
+          is_deleted: false,
+        },
+        include: {
+          perimeters: true,
+          objectives: {
+            include: {
+              axes: {
+                include: {
+                  hypotheses: {
+                    include: {
+                      collection_plans: {
+                        include: { sources: true, keywords: true },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            orderBy: { priority: 'asc' },
+          },
+        },
+      });
+    }
+
+    return [...individualProjects, ...orgProjects];
   }
 
   async getArchivedProjects(userId: string) {

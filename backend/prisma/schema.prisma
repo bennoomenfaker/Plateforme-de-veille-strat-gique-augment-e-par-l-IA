@@ -280,6 +280,7 @@ model CollectionPlanSource {
   source_type        String
   source_label       String
   source_url         String?
+  frequency          Frequency      @default(DAILY)
   metadata           Json?
   collection_plan_id String
   collection_plan    CollectionPlan @relation(fields: [collection_plan_id], references: [id], onDelete: Cascade)

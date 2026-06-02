@@ -64,6 +64,7 @@ export default function CollectionPlanDetailPage() {
     source_type: 'RSS',
     source_label: '',
     source_url: '',
+    frequency: 'DAILY',
     api_key: '',
     api_method: 'GET',
     document_note: '',
@@ -145,6 +146,7 @@ export default function CollectionPlanDetailPage() {
         source_type: type,
         source_label: newSource.source_label.trim(),
         source_url: newSource.source_url.trim() || undefined,
+        frequency: newSource.frequency,
         api_key: newSource.api_key || undefined,
         api_method: newSource.api_method,
         metadata:
@@ -154,7 +156,7 @@ export default function CollectionPlanDetailPage() {
               ? { document_note: newSource.document_note }
               : undefined,
       });
-      setNewSource({ source_type: 'RSS', source_label: '', source_url: '', api_key: '', api_method: 'GET', document_note: '' });
+      setNewSource({ source_type: 'RSS', source_label: '', source_url: '', frequency: 'DAILY', api_key: '', api_method: 'GET', document_note: '' });
       setShowAddSource(false);
       setAddSourceMsg('Source ajoutee avec succes');
       queryClient.invalidateQueries({ queryKey: ['collection-plan', planId] });
@@ -455,6 +457,15 @@ export default function CollectionPlanDetailPage() {
                     {newSource.source_type === 'DOCUMENT' && (
                       <input value={newSource.document_note} onChange={e => setNewSource({ ...newSource, document_note: e.target.value })} placeholder="Référence document / instructions" style={inputStyle} />
                     )}
+                    <div>
+                      <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: '#9ca3af' }}>Fréquence</label>
+                      <select value={newSource.frequency} onChange={e => setNewSource({ ...newSource, frequency: e.target.value })} style={inputStyle}>
+                        <option value="ON_DEMAND">À la demande</option>
+                        <option value="DAILY">Quotidienne</option>
+                        <option value="WEEKLY">Hebdomadaire</option>
+                        <option value="MONTHLY">Mensuelle</option>
+                      </select>
+                    </div>
                   </div>
 
                   {/* Suggestions */}

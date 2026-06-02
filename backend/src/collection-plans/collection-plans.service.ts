@@ -300,13 +300,13 @@ export class CollectionPlansService {
         source_type: validated.type,
         source_label: data.source_label?.trim() || validated.url || 'Document',
         source_url: validated.url,
+        frequency: data.frequency || 'DAILY',
         metadata: validated.metadata,
         collection_plan_id: planId,
       },
     });
   }
 
-  // ✅ CORRECTION #5 : updateSource — manquait complètement
   async updateSource(
     planId: string,
     sourceId: string,
@@ -344,6 +344,7 @@ export class CollectionPlansService {
         source_type: validated.type,
         source_label: data.source_label ?? source.source_label,
         source_url: validated.url,
+        frequency: data.frequency ?? source.frequency,
         metadata: validated.metadata,
       },
     });

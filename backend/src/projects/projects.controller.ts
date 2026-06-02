@@ -40,6 +40,12 @@ export class ProjectsController {
     return this.projectsService.getMyProjects(req.user.userId);
   }
 
+  // GET /projects/graph → données pour la visualisation arborescente
+  @Get('graph')
+  async getGraphData(@Request() req: any) {
+    return this.projectsService.getGraphData(req.user.userId);
+  }
+
   // GET /projects/archived → projets archivés
   @Get('archived')
   async getArchived(@Request() req: any) {

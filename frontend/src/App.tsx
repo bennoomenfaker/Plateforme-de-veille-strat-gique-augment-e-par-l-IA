@@ -20,6 +20,7 @@ import AdminPage from './pages/admin/AdminPage';
 import CreateProjectWizard from './pages/wizard/CreateProjectWizard';
 import ProfilePage from './pages/profile/ProfilePage';
 import AlertesPage from './pages/alertes/AlertesPage';
+import GraphPage from './pages/graph/GraphPage';
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuth();
@@ -73,6 +74,7 @@ export default function App() {
         <Route path="/projects/:id/insights" element={<PrivateRoute><ProjectInsightDashboardPage /></PrivateRoute>} />
 
         {/* Autres */}
+        <Route path="/graph" element={<PrivateRoute><GraphPage /></PrivateRoute>} />
         <Route path="/organisation" element={<PrivateRoute><OrganisationPage /></PrivateRoute>} />
         <Route path="/analyse/:projectId" element={<PrivateRoute><AnalysePage /></PrivateRoute>} />
         <Route path="/alertes" element={<PrivateRoute><AlertesPage /></PrivateRoute>} />

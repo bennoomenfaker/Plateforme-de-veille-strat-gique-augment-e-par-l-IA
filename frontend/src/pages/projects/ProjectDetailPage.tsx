@@ -33,13 +33,15 @@ export default function ProjectDetailPage() {
   const [analysing, setAnalysing]   = useState(false);
   const [analyseMsg, setAnalyseMsg] = useState('');
   const [activeTab, setActiveTab]   = useState<'veille' | 'cadrage'>('cadrage');
+  const [expandedObjectives, setExpandedObjectives] = useState<Record<string, boolean>>({});
+  const [expandedAxes, setExpandedAxes] = useState<Record<string, boolean>>({});
+  const [expandedHypotheses, setExpandedHypotheses] = useState<Record<string, boolean>>({});
 
   const [showEditModal, setShowEditModal] = useState(false);
   const [editForm, setEditForm] = useState({
     nom: '',
     description: '',
     monitoring_type: 'TECHNOLOGICAL',
-    frequency: 'DAILY',
   });
 
   // ── Queries ─────────────────────────────────────────────────────────────────
@@ -64,7 +66,6 @@ export default function ProjectDetailPage() {
         nom:             project.nom             || '',
         description:     project.description     || '',
         monitoring_type: project.monitoring_type || 'TECHNOLOGICAL',
-        frequency:       project.frequency       || 'DAILY',
       });
     }
   }, [project]);
@@ -350,34 +351,18 @@ export default function ProjectDetailPage() {
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5"
-                      style={{ color: '#9ca3af' }}>Type de veille</label>
-                    <select
-                      value={editForm.monitoring_type}
-                      onChange={e => setEditForm({ ...editForm, monitoring_type: e.target.value })}
-                      style={inputStyle}
-                    >
-                      {MONITORING_TYPES.map(t => (
-                        <option key={t.value} value={t.value}>{t.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5"
-                      style={{ color: '#9ca3af' }}>Fréquence</label>
-                    <select
-                      value={editForm.frequency}
-                      onChange={e => setEditForm({ ...editForm, frequency: e.target.value })}
-                      style={inputStyle}
-                    >
-                      <option value="ON_DEMAND">À la demande</option>
-                      <option value="DAILY">Quotidienne</option>
-                      <option value="WEEKLY">Hebdomadaire</option>
-                      <option value="MONTHLY">Mensuelle</option>
-                    </select>
-                  </div>
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5"
+                    style={{ color: '#9ca3af' }}>Type de veille</label>
+                  <select
+                    value={editForm.monitoring_type}
+                    onChange={e => setEditForm({ ...editForm, monitoring_type: e.target.value })}
+                    style={inputStyle}
+                  >
+                    {MONITORING_TYPES.map(t => (
+                      <option key={t.value} value={t.value}>{t.label}</option>
+                    ))}
+                  </select>
                 </div>
 
                 {updateProjectMutation.isError && (
@@ -467,79 +452,162 @@ export default function ProjectDetailPage() {
                 </button>
               </div>
             ) : (
-              objectives.map((obj: any) => (
-                <div key={obj.id} style={cardStyle} className="overflow-hidden">
-                  {/* Objectif */}
-                  <div className="px-5 py-4 flex items-center justify-between"
-                    style={{ borderBottom: '1px solid #1e2535' }}>
-                    <div className="flex items-center gap-3">
+              objectives.map((obj: any) => {
+                const objOpen = !!expandedObjectives[obj.id];
+                return (
+                <div key={obj.id} style={cardStyle} className="overflow-hidden transition-all duration-200">
+
+                  {/* ── Objectif header ── */}
+                  <div
+                    onClick={() => setExpandedObjectives(p => ({ ...p, [obj.id]: !objOpen }))}
+                    className="px-5 py-4 flex items-center justify-between cursor-pointer transition-colors duration-150 hover:bg-white/[0.02]"
+                    style={{ borderBottom: objOpen ? '1px solid #1e2535' : 'none' }}>
+                    <div className="flex items-center gap-3 min-w-0">
                       <span className="text-xs font-bold px-2 py-0.5 rounded-full shrink-0"
                         style={{ background: 'rgba(59,130,246,0.15)', color: '#60a5fa', border: '1px solid rgba(59,130,246,0.2)' }}>
                         Objectif {obj.priority}
                       </span>
-                      <p className="text-sm font-semibold text-white">{obj.content}</p>
+                      <p className="text-sm font-semibold text-white truncate">{obj.content}</p>
                     </div>
-                    {canCreateOrModify && <button
-                      onClick={() => window.confirm('Supprimer cet objectif ?') && deleteObjectiveMutation.mutate(obj.id)}
-                      className="hover:text-red-400"
-                      style={actionBtnStyle}
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
-                    </button>}
-                  </div>
-
-                  {/* Axes */}
-                  {obj.axes?.map((axe: any) => (
-                    <div key={axe.id}>
-                      <div className="px-8 py-3 flex items-center justify-between"
-                        style={{ borderBottom: '1px solid #1e2535', background: 'rgba(99,102,241,0.03)' }}>
-                        <div className="flex items-center gap-3">
-                          <span className="text-xs font-bold px-2 py-0.5 rounded-full"
-                            style={{ background: 'rgba(99,102,241,0.15)', color: '#a5b4fc' }}>Axe</span>
-                          <p className="text-sm font-medium text-white">{axe.name}</p>
-                        </div>
-                        <button
-                          onClick={() => window.confirm('Supprimer cet axe ?') && deleteAxisMutation.mutate(axe.id)}
-                          className="hover:text-red-400"
-                          style={actionBtnStyle}
-                        >
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <div className="flex items-center gap-2 shrink-0 ml-3">
+                      {canCreateOrModify && (
+                        <button onClick={e => { e.stopPropagation(); if (window.confirm('Supprimer cet objectif ?')) deleteObjectiveMutation.mutate(obj.id); }}
+                          className="hover:text-red-400 transition-colors" style={actionBtnStyle}>
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                               d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                           </svg>
                         </button>
-                      </div>
-
-                      {/* Hypothèses */}
-                      {axe.hypotheses?.map((hyp: any) => (
-                        <div key={hyp.id} className="px-12 py-3 flex items-start justify-between"
-                          style={{ borderBottom: '1px solid #1e2535', background: 'rgba(16,185,129,0.02)' }}>
-                          <div className="flex items-start gap-3">
-                            <span className="text-xs font-bold px-2 py-0.5 rounded-full mt-0.5"
-                              style={{ background: 'rgba(16,185,129,0.15)', color: '#34d399' }}>
-                              Hypothèse
-                            </span>
-                            <p className="text-sm text-white">{hyp.content}</p>
-                          </div>
-                          <button
-                            onClick={() => window.confirm('Supprimer cette hypothèse ?') && deleteHypothesisMutation.mutate(hyp.id)}
-                            className="hover:text-red-400"
-                            style={actionBtnStyle}
-                          >
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                          </button>
-                        </div>
-                      ))}
+                      )}
+                      <svg className={`w-5 h-5 transition-transform duration-200 ${objOpen ? 'rotate-180' : ''}`}
+                        style={{ color: '#6b7280' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
                     </div>
-                  ))}
+                  </div>
+
+                  {/* ── Objectif body (expandable) ── */}
+                  <div className={`transition-all duration-200 overflow-hidden ${objOpen ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'}`}>
+                    {obj.axes?.length === 0 && (
+                      <div className="px-5 py-4 text-center">
+                        <p className="text-xs" style={{ color: '#4b5568' }}>Aucun axe défini</p>
+                      </div>
+                    )}
+
+                    {obj.axes?.map((axe: any) => {
+                      const axeOpen = !!expandedAxes[axe.id];
+                      return (
+                      <div key={axe.id}
+                        style={{ borderBottom: '1px solid #1e2535', background: 'rgba(99,102,241,0.02)' }}>
+
+                        {/* ── Axe header ── */}
+                        <div
+                          onClick={() => setExpandedAxes(p => ({ ...p, [axe.id]: !axeOpen }))}
+                          className="px-6 py-3 flex items-center justify-between cursor-pointer transition-colors duration-150 hover:bg-white/[0.02]"
+                          style={{ borderBottom: axeOpen ? '1px solid #1e2535' : 'none' }}>
+                          <div className="flex items-center gap-3 min-w-0">
+                            <span className="text-[11px] font-bold px-2 py-0.5 rounded-full shrink-0"
+                              style={{ background: 'rgba(99,102,241,0.15)', color: '#a5b4fc' }}>Axe</span>
+                            <p className="text-sm font-medium text-white truncate">{axe.name}</p>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0 ml-3">
+                            {canCreateOrModify && (
+                              <button onClick={e => { e.stopPropagation(); if (window.confirm('Supprimer cet axe ?')) deleteAxisMutation.mutate(axe.id); }}
+                                className="hover:text-red-400 transition-colors" style={actionBtnStyle}>
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                              </button>
+                            )}
+                            <svg className={`w-4 h-4 transition-transform duration-200 ${axeOpen ? 'rotate-180' : ''}`}
+                              style={{ color: '#6b7280' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                            </svg>
+                          </div>
+                        </div>
+
+                        {/* ── Axe body (expandable) ── */}
+                        <div className={`transition-all duration-200 overflow-hidden ${axeOpen ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'}`}>
+                          {axe.hypotheses?.length === 0 && (
+                            <div className="px-8 py-3 text-center">
+                              <p className="text-xs" style={{ color: '#4b5568' }}>Aucune hypothèse</p>
+                            </div>
+                          )}
+
+                          {axe.hypotheses?.map((hyp: any) => {
+                            const hypOpen = !!expandedHypotheses[hyp.id];
+                            const plans = hyp.collection_plans || [];
+                            return (
+                            <div key={hyp.id}
+                              style={{ borderBottom: '1px solid #1e2535', background: 'rgba(16,185,129,0.02)' }}>
+
+                              {/* ── Hypothèse header ── */}
+                              <div
+                                onClick={() => setExpandedHypotheses(p => ({ ...p, [hyp.id]: !hypOpen }))}
+                                className="px-8 py-3 flex items-center justify-between cursor-pointer transition-colors duration-150 hover:bg-white/[0.02]"
+                                style={{ borderBottom: hypOpen ? '1px solid #1e2535' : 'none' }}>
+                                <div className="flex items-center gap-3 min-w-0">
+                                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-full shrink-0"
+                                    style={{ background: 'rgba(16,185,129,0.15)', color: '#34d399' }}>
+                                    Hypothèse
+                                  </span>
+                                  <p className="text-sm text-white truncate">{hyp.content}</p>
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0 ml-3">
+                                  {canCreateOrModify && (
+                                    <button onClick={e => { e.stopPropagation(); if (window.confirm('Supprimer cette hypothèse ?')) deleteHypothesisMutation.mutate(hyp.id); }}
+                                      className="hover:text-red-400 transition-colors" style={actionBtnStyle}>
+                                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                      </svg>
+                                    </button>
+                                  )}
+                                  <svg className={`w-4 h-4 transition-transform duration-200 ${hypOpen ? 'rotate-180' : ''}`}
+                                    style={{ color: '#6b7280' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                  </svg>
+                                </div>
+                              </div>
+
+                              {/* ── Hypothèse body: Collection Plans ── */}
+                              <div className={`transition-all duration-200 overflow-hidden ${hypOpen ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'}`}>
+                                <div className="px-10 py-3 space-y-2">
+                                  {plans.length === 0 && (
+                                    <p className="text-[11px]" style={{ color: '#4b5568' }}>
+                                      Aucun plan de collecte
+                                    </p>
+                                  )}
+                                  {plans.map((plan: any) => (
+                                    <Link key={plan.id} to={`/projects/${id}/plans/${plan.id}`}
+                                      className="flex items-center justify-between px-4 py-2.5 rounded-xl transition-all duration-150 group hover:translate-x-1"
+                                      style={{ background: '#0f1117', border: '1px solid #1e2535' }}>
+                                      <div className="flex items-center gap-2.5 min-w-0">
+                                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0"
+                                          style={{ background: 'rgba(99,102,241,0.15)', color: '#a5b4fc' }}>
+                                          PLAN
+                                        </span>
+                                        <p className="text-xs text-white truncate group-hover:text-blue-400 transition-colors">
+                                          {plan.question}
+                                        </p>
+                                      </div>
+                                      <span className="text-[10px] shrink-0 ml-2 px-2 py-0.5 rounded-full"
+                                        style={{ background: 'rgba(59,130,246,0.1)', color: '#60a5fa' }}>
+                                        {plan.frequency}
+                                      </span>
+                                    </Link>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          )})}
+                        </div>
+                      </div>
+                    )})}
+                  </div>
                 </div>
-              ))
+              )})
             )}
           </div>
         )}
