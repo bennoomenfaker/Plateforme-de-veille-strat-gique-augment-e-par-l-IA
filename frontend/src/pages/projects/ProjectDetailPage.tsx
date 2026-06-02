@@ -329,7 +329,19 @@ export default function ProjectDetailPage() {
 
             {/* Export CSV */}
             <button
-              onClick={() => window.open(`/api/projects/${id}/export-csv`, '_blank')}
+              onClick={async () => {
+                try {
+                  const res = await api.get(`/projects/${id}/export-csv`, { responseType: 'blob' });
+                  const url = URL.createObjectURL(new Blob([res.data], { type: 'text/csv;charset=utf-8;' }));
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `export-${id.slice(0, 8)}.csv`;
+                  document.body.appendChild(a);
+                  a.click();
+                  a.remove();
+                  URL.revokeObjectURL(url);
+                } catch { alert('Erreur lors de l\'export CSV'); }
+              }}
               className="text-sm font-semibold px-4 py-2 rounded-xl transition"
               style={{ border: '1px solid #1e2535', color: '#9ca3af' }}
             >
