@@ -289,6 +289,7 @@ export class ProjectsService {
         owner_user_id: userId,
         organisation_id: null,
         is_deleted: false,
+        isActive: true,
       },
       include: {
         perimeters: true,
@@ -322,6 +323,7 @@ export class ProjectsService {
         where: {
           organisation_id: { in: memberships.map((m) => m.organisation_id) },
           is_deleted: false,
+          isActive: true,
         },
         include: {
           perimeters: true,
