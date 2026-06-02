@@ -135,6 +135,22 @@ export default function ProjectDetailPage() {
     },
   });
 
+  const closeMutation = useMutation({
+    mutationFn: () => api.patch(`/projects/${id}/close`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project', id] });
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+    },
+  });
+
+  const deleteProjectMutation = useMutation({
+    mutationFn: () => projectsService.delete(id!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      navigate('/projects');
+    },
+  });
+
   // ── Handlers ────────────────────────────────────────────────────────────────
   const handleAnalyse = async () => {
     setAnalysing(true); setAnalyseMsg('');
@@ -273,6 +289,30 @@ export default function ProjectDetailPage() {
                 {duplicateMutation.isPending ? '...' : 'Dupliquer'}
               </span>
             </button>}
+
+            {/* Clôturer */}
+            {canCreateOrModify && project?.isActive && (
+              <button
+                onClick={() => { if (window.confirm('Clôturer ce projet ? Il sera marqué comme terminé.')) closeMutation.mutate(); }}
+                disabled={closeMutation.isPending}
+                className="text-sm font-semibold px-4 py-2 rounded-xl transition"
+                style={{ border: '1px solid #1e2535', color: '#fbbf24' }}
+              >
+                {closeMutation.isPending ? '...' : 'Clôturer'}
+              </button>
+            )}
+
+            {/* Supprimer */}
+            {canCreateOrModify && (
+              <button
+                onClick={() => { if (window.confirm('Supprimer définitivement ce projet ? Cette action est irréversible.')) deleteProjectMutation.mutate(); }}
+                disabled={deleteProjectMutation.isPending}
+                className="text-sm font-semibold px-4 py-2 rounded-xl transition"
+                style={{ border: '1px solid rgba(239,68,68,0.3)', color: '#f87171' }}
+              >
+                {deleteProjectMutation.isPending ? '...' : 'Supprimer'}
+              </button>
+            )}
 
             {/* Nouveau projet */}
             <button
@@ -539,10 +579,17 @@ export default function ProjectDetailPage() {
                     </div>
                     <div className="flex items-center gap-1 shrink-0 ml-3">
                       {axesCount > 0 && !objOpen && (
-                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded mr-1"
-                          style={{ background: 'rgba(99,102,241,0.1)', color: '#a5b4fc' }}>
-                          {axesCount} axe{axesCount > 1 ? 's' : ''}
-                        </span>
+                        <>
+                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded mr-1"
+                            style={{ background: 'rgba(99,102,241,0.1)', color: '#a5b4fc' }}>
+                            {axesCount} axe{axesCount > 1 ? 's' : ''}
+                          </span>
+                          <button onClick={e => { e.stopPropagation(); setExpandedObjectives(p => ({ ...p, [obj.id]: true })); }}
+                            className="text-[10px] font-semibold px-2 py-0.5 rounded mr-1 transition"
+                            style={{ background: 'rgba(99,102,241,0.15)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,0.25)' }}>
+                            Consulter les axes
+                          </button>
+                        </>
                       )}
                       {canCreateOrModify && editingItem?.id === obj.id && editingItem?.type === 'objective' ? (
                         <>

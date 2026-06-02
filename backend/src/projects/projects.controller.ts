@@ -68,6 +68,12 @@ export class ProjectsController {
     return this.projectsService.updateProject(id, req.user.userId, body);
   }
 
+  // PATCH /projects/:id/close → clôturer
+  @Patch(':id/close')
+  async close(@Param('id') id: string, @Request() req: any) {
+    return this.projectsService.closeProject(id, req.user.userId);
+  }
+
   // PATCH /projects/:id/archive → archiver
   @Patch(':id/archive')
   async archive(@Param('id') id: string, @Request() req: any) {

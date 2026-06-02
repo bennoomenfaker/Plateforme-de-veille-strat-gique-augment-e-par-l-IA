@@ -6,7 +6,7 @@ export class LlmProviderService {
   private readonly logger = new Logger(LlmProviderService.name);
   private readonly ollamaUrl =
     process.env.OLLAMA_URL || 'http://localhost:11434';
-  private readonly model =     process.env.OLLAMA_MODEL || 'mistral';
+  private readonly model = process.env.OLLAMA_MODEL || 'mistral';
 
   async generate(prompt: string): Promise<string> {
     try {
@@ -23,8 +23,9 @@ export class LlmProviderService {
       );
       return res.data.response || '';
     } catch (err) {
-      this.logger.error(`Ollama error: ${err.message}`);
-      throw new Error(`LLM unavailable: ${err.message}`);
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(`Ollama error: ${message}`);
+      throw new Error(`LLM unavailable: ${message}`);
     }
   }
 

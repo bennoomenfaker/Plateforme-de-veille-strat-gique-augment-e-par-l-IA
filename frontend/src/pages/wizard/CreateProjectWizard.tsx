@@ -357,17 +357,31 @@ export default function CreateProjectWizard() {
           <div style={cardStyle}>
             <h2 className="text-lg font-bold text-white mb-2">Axes d'analyse</h2>
             <p className="text-xs mb-5" style={{ color: '#6b7280' }}>Associez des axes à chaque objectif (max 5 par objectif)</p>
-            <div className="space-y-2 mb-5">
-              {axes.map((axe: any) => {
-                const obj = objectives.find((o: any) => o.id === axe.objective_id);
+            <div className="space-y-4 mb-5">
+              {objectives.map((obj: any, oi: number) => {
+                const objAxes = axes.filter((a: any) => a.objective_id === obj.id);
+                if (objAxes.length === 0) return null;
                 return (
-                  <div key={axe.id} className="flex items-center gap-3 px-4 py-3 rounded-xl"
-                    style={{ background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.15)' }}>
-                    <div className="flex-1">
-                      <p className="text-xs mb-0.5" style={{ color: '#a5b4fc' }}>{obj?.content?.substring(0, 40)}...</p>
-                      <p className="text-sm font-semibold text-white">{axe.name}</p>
+                  <div key={obj.id}>
+                    <p className="text-xs font-bold mb-2 flex items-center gap-2" style={{ color: '#60a5fa' }}>
+                      <span className="text-xs font-bold px-1.5 py-0.5 rounded"
+                        style={{ background: 'rgba(59,130,246,0.2)', color: '#60a5fa' }}>O{oi + 1}</span>
+                      {obj.content}
+                    </p>
+                    <div className="space-y-2 ml-3">
+                      {objAxes.map((axe: any) => (
+                        <div key={axe.id} className="flex items-center gap-3 px-4 py-3 rounded-xl"
+                          style={{ background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.15)' }}>
+                          <div className="flex-1">
+                            <p className="text-sm font-semibold text-white">{axe.name}</p>
+                            {axe.description && (
+                              <p className="text-xs mt-0.5" style={{ color: '#6b7280' }}>{axe.description}</p>
+                            )}
+                          </div>
+                          <DeleteBtn onClick={() => handleDeleteAxe(axe.id, axe.objective_id)} />
+                        </div>
+                      ))}
                     </div>
-                    <DeleteBtn onClick={() => handleDeleteAxe(axe.id, axe.objective_id)} />
                   </div>
                 );
               })}
@@ -378,7 +392,9 @@ export default function CreateProjectWizard() {
                 <select style={inputStyle} value={axeForm.objective_id}
                   onChange={e => setAxeForm({ ...axeForm, objective_id: e.target.value })}>
                   <option value="">Sélectionner un objectif</option>
-                  {objectives.map((obj: any) => <option key={obj.id} value={obj.id}>{obj.content.substring(0, 60)}</option>)}
+                  {objectives.map((obj: any, oi: number) => (
+                    <option key={obj.id} value={obj.id}>O{oi + 1} — {obj.content}</option>
+                  ))}
                 </select>
               </div>
               <div>
@@ -436,7 +452,13 @@ export default function CreateProjectWizard() {
                 <select style={inputStyle} value={hypForm.axis_id}
                   onChange={e => setHypForm({ ...hypForm, axis_id: e.target.value })}>
                   <option value="">Sélectionner un axe</option>
-                  {axes.map((axe: any) => <option key={axe.id} value={axe.id}>{axe.name}</option>)}
+                  {axes.map((axe: any) => {
+                    const obj = objectives.find((o: any) => o.id === axe.objective_id);
+                    const oi = objectives.indexOf(obj);
+                    return (
+                      <option key={axe.id} value={axe.id}>O{oi + 1} / {axe.name}</option>
+                    );
+                  })}
                 </select>
               </div>
               <div>

@@ -83,6 +83,7 @@ export const authService = {
 // --- 2. PROJECTS ---
 export const projectsService = {
   getAll: () => api.get('/projects'),
+  getArchived: () => api.get('/projects/archived'),
   getById: (id: string) => api.get(`/projects/${id}`),
   create: (data: any) => api.post('/projects', data),
   update: (id: string, data: any) => api.patch(`/projects/${id}`, data),

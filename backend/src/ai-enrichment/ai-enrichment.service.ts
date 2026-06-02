@@ -128,7 +128,6 @@ export class AiEnrichmentService {
               await this.updateHypothesisEvaluation(
                 plan.hypothesis_id,
                 projectId,
-                parsed.hypothesis_impact,
               );
             }
           }
@@ -136,7 +135,8 @@ export class AiEnrichmentService {
           processed++;
           this.logger.log(`Enrichi ${processed}/${items.length - skipped}`);
         } catch (err) {
-          this.logger.error(`Error item ${item.id}: ${err.message}`);
+          const message = err instanceof Error ? err.message : String(err);
+          this.logger.error(`Error item ${item.id}: ${message}`);
           failed++;
         }
       }
@@ -234,11 +234,13 @@ export class AiEnrichmentService {
           await this.updateHypothesisEvaluation(
             plan.hypothesis_id,
             item.project_id,
-            parsed.hypothesis_impact,
           );
         }
         processed++;
-      } catch (err) {
+      } catch (error) {
+        this.logger.error(
+          `Error enriching item ${item.id}: ${error instanceof Error ? error.message : String(error)}`,
+        );
         failed++;
       }
     }
@@ -383,7 +385,6 @@ export class AiEnrichmentService {
   private async updateHypothesisEvaluation(
     hypothesisId: string,
     projectId: string,
-    impact: string,
   ) {
     const enriched = await this.prisma.enrichedItem.findMany({
       where: { hypothesis_id: hypothesisId },
