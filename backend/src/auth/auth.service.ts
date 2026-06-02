@@ -30,7 +30,8 @@ export class AuthService {
     });
     if (existing) throw new ConflictException('Email déjà utilisé');
 
-    const password = data.mot_de_passe || crypto.randomBytes(12).toString('hex');
+    const password =
+      data.mot_de_passe || crypto.randomBytes(12).toString('hex');
     const hashedPassword = await bcrypt.hash(password, 10);
     const user = await this.prisma.user.create({
       data: {
@@ -44,8 +45,10 @@ export class AuthService {
 
     await this.logActivity(user.id, 'REGISTER', 'user', user.id);
     const resetToken = await this.generatePasswordResetToken(user.id);
-    this.mailService.sendWelcomeEmail(user.email, user.nom, resetToken).catch(() => {});
-    const { mot_de_passe, ...result } = user;
+    this.mailService
+      .sendWelcomeEmail(user.email, user.nom, resetToken)
+      .catch(() => {});
+    const { mot_de_passe: _mot_de_passe, ...result } = user;
     return result;
   }
 
@@ -57,7 +60,8 @@ export class AuthService {
     if (existing) throw new ConflictException('Email déjà utilisé');
 
     const mode = data.mode === 'JOIN' ? 'JOIN' : 'CREATE';
-    const password = data.mot_de_passe || crypto.randomBytes(12).toString('hex');
+    const password =
+      data.mot_de_passe || crypto.randomBytes(12).toString('hex');
     const hashedPassword = await bcrypt.hash(password, 10);
 
     if (mode === 'CREATE') {
@@ -105,8 +109,10 @@ export class AuthService {
         organisation.id,
       );
       const resetToken = await this.generatePasswordResetToken(user.id);
-      this.mailService.sendWelcomeEmail(user.email, user.nom, resetToken).catch(() => {});
-      const { mot_de_passe, ...userResult } = user;
+      this.mailService
+        .sendWelcomeEmail(user.email, user.nom, resetToken)
+        .catch(() => {});
+      const { mot_de_passe: _mot_de_passe, ...userResult } = user;
       return {
         user: userResult,
         organisation,
@@ -174,12 +180,116 @@ export class AuthService {
       organisation.id,
     );
     const resetToken = await this.generatePasswordResetToken(user.id);
-    this.mailService.sendWelcomeEmail(user.email, user.nom, resetToken).catch(() => {});
-    const { mot_de_passe, ...userResult } = user;
+    this.mailService
+      .sendWelcomeEmail(user.email, user.nom, resetToken)
+      .catch(() => {});
+    const { mot_de_passe: _mot_de_passe, ...userResult } = user;
     return { user: userResult, organisation, role };
   }
 
   // ─── VALIDER TOKEN INVITATION ────────────────────────────────────────────────
+  async verifyInvitation(token: string) {
+    const invitation = await this.prisma.invitationOrganisation.findUnique({
+      where: { token },
+      include: { organisation: true },
+    });
+
+    if (!invitation) throw new BadRequestException('Token invalide');
+    if (invitation.status !== 'PENDING') {
+      throw new BadRequestException('Invitation déjà utilisée ou expirée');
+    }
+    if (invitation.expires_at < new Date()) {
+      await this.prisma.invitationOrganisation.update({
+        where: { token },
+        data: { status: 'EXPIRED' },
+      });
+      throw new BadRequestException('Token expiré');
+    }
+
+    if (invitation.role === 'PROPRIETAIRE') {
+      throw new BadRequestException('Invitation propriétaire non autorisée');
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { email: invitation.email },
+    });
+
+    return {
+      valid: true,
+      email: invitation.email,
+      nom_organisation: invitation.organisation.nom,
+      role: invitation.role,
+      userExists: !!user,
+    };
+  }
+
+  async acceptInvitation(token: string) {
+    const invitation = await this.prisma.invitationOrganisation.findUnique({
+      where: { token },
+      include: { organisation: true },
+    });
+
+    if (!invitation) throw new BadRequestException('Token invalide');
+    if (invitation.status !== 'PENDING') {
+      throw new BadRequestException('Invitation déjà utilisée ou expirée');
+    }
+    if (invitation.expires_at < new Date()) {
+      await this.prisma.invitationOrganisation.update({
+        where: { token },
+        data: { status: 'EXPIRED' },
+      });
+      throw new BadRequestException('Token expiré');
+    }
+
+    if (invitation.role === 'PROPRIETAIRE') {
+      throw new BadRequestException('Invitation propriétaire non autorisée');
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { email: invitation.email },
+    });
+    if (!user) {
+      throw new BadRequestException(
+        "Vous devez d'abord créer un compte pour accepter cette invitation",
+      );
+    }
+
+    const alreadyMember = await this.prisma.membreOrganisation.findFirst({
+      where: { organisation_id: invitation.organisation_id, user_id: user.id },
+    });
+    if (alreadyMember) {
+      throw new BadRequestException(
+        'Vous êtes déjà membre de cette organisation',
+      );
+    }
+
+    await this.prisma.membreOrganisation.create({
+      data: {
+        organisation_id: invitation.organisation_id,
+        user_id: user.id,
+        role: invitation.role,
+        statut: 'ACTIF',
+      },
+    });
+
+    await this.prisma.invitationOrganisation.update({
+      where: { token },
+      data: { status: 'ACCEPTED' },
+    });
+
+    await this.logActivity(
+      user.id,
+      'ACCEPT_INVITATION',
+      'organisation',
+      invitation.organisation_id,
+    );
+
+    return {
+      message: 'Invitation acceptée avec succès',
+      organisation: invitation.organisation.nom,
+    };
+  }
+
   async validateInvitation(token: string, data: any) {
     const invitation = await this.prisma.invitationOrganisation.findUnique({
       where: { token },
@@ -249,7 +359,7 @@ export class AuthService {
       'organisation',
       invitation.organisation_id,
     );
-    const { mot_de_passe, ...userResult } = user;
+    const { mot_de_passe: _mot_de_passe, ...userResult } = user;
     return {
       message: 'Invitation acceptée',
       user: userResult,
@@ -269,16 +379,14 @@ export class AuthService {
       },
     });
 
-    if (!user)
-      throw new UnauthorizedException('Email non trouvé');
+    if (!user) throw new UnauthorizedException('Email non trouvé');
     if (user.statut === 'SUSPENDU')
       throw new UnauthorizedException('Compte suspendu');
     if (user.statut === 'INACTIF')
       throw new UnauthorizedException('Compte inactif');
 
     const isValid = await bcrypt.compare(data.mot_de_passe, user.mot_de_passe);
-    if (!isValid)
-      throw new UnauthorizedException('Mot de passe incorrect');
+    if (!isValid) throw new UnauthorizedException('Mot de passe incorrect');
 
     const payload = {
       sub: user.id,
@@ -290,7 +398,7 @@ export class AuthService {
 
     await this.logActivity(user.id, 'LOGIN', 'user', user.id);
 
-    const { mot_de_passe, ...userResult } = user;
+    const { mot_de_passe: _mot_de_passe, ...userResult } = user;
     return {
       access_token: accessToken,
       refresh_token: refreshToken,
@@ -316,7 +424,7 @@ export class AuthService {
     });
 
     if (!user) throw new UnauthorizedException('Utilisateur introuvable');
-    const { mot_de_passe, ...result } = user;
+    const { mot_de_passe: _mot_de_passe, ...result } = user;
     return result;
   }
 
@@ -333,7 +441,7 @@ export class AuthService {
       },
     });
     await this.logActivity(userId, 'UPDATE_PROFILE', 'user', userId);
-    const { mot_de_passe, ...result } = user;
+    const { mot_de_passe: _mot_de_passe, ...result } = user;
     return result;
   }
 
@@ -465,7 +573,10 @@ export class AuthService {
   // ─── HELPERS ─────────────────────────────────────────────────────────────────
   private async generatePasswordResetToken(userId: string): Promise<string> {
     const rawToken = crypto.randomBytes(32).toString('hex');
-    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+    const tokenHash = crypto
+      .createHash('sha256')
+      .update(rawToken)
+      .digest('hex');
     const expiresAt = new Date(Date.now() + 3600000);
     await this.prisma.passwordResetToken.create({
       data: { user_id: userId, token_hash: tokenHash, expires_at: expiresAt },

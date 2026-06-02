@@ -31,9 +31,7 @@ import { ReportsModule } from './reports/reports.module';
     CommonModule,
     ScheduleModule.forRoot(),
     ThrottlerModule.forRoot({
-      throttlers: [
-        { name: 'auth', ttl: 60000, limit: 20 },
-      ],
+      throttlers: [{ name: 'auth', ttl: 60000, limit: 20 }],
       errorMessage: 'Too many requests, try again later',
     }),
     AuthModule,

@@ -5,6 +5,7 @@ import {
   Get,
   Patch,
   Body,
+  Param,
   UseGuards,
   Request,
   UseInterceptors,
@@ -42,6 +43,16 @@ export class AuthController {
   @Post('register/invitation')
   async validateInvitation(@Body() body: any) {
     return this.authService.validateInvitation(body.token, body);
+  }
+
+  @Get('invitation/:token/verify')
+  async verifyInvitation(@Param('token') token: string) {
+    return this.authService.verifyInvitation(token);
+  }
+
+  @Post('invitation/:token/accept')
+  async acceptInvitation(@Param('token') token: string) {
+    return this.authService.acceptInvitation(token);
   }
 
   @Post('login')

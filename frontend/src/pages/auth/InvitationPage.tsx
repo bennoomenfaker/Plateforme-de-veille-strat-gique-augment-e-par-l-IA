@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 
@@ -8,6 +8,35 @@ export default function InvitationPage() {
   const [form, setForm] = useState({ nom: '', mot_de_passe: '', confirm: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [checking, setChecking] = useState(true);
+  const [accepted, setAccepted] = useState(false);
+  const [orgName, setOrgName] = useState('');
+
+  useEffect(() => {
+    if (!token) return;
+    api
+      .get(`/auth/invitation/${token}/verify`)
+      .then((res) => {
+        if (res.data.userExists) {
+          return api.post(`/auth/invitation/${token}/accept`);
+        }
+        setOrgName(res.data.nom_organisation);
+        setChecking(false);
+      })
+      .then((acceptRes) => {
+        if (acceptRes) {
+          setOrgName(acceptRes.data.organisation);
+          setAccepted(true);
+          setTimeout(() => navigate('/login'), 3000);
+        }
+      })
+      .catch((err) => {
+        setError(
+          err.response?.data?.message || 'Token invalide ou expiré',
+        );
+        setChecking(false);
+      });
+  }, [token, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,13 +60,50 @@ export default function InvitationPage() {
     }
   };
 
+  if (checking) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-green-50 to-teal-100 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-8 text-center">
+          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-teal-600 mx-auto" />
+          <p className="text-gray-500 mt-4">Vérification de votre invitation...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (accepted) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-green-50 to-teal-100 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-8 text-center">
+          <div className="text-5xl mb-4">🎉</div>
+          <h1 className="text-2xl font-bold text-gray-800 mb-2">
+            Invitation acceptée !
+          </h1>
+          <p className="text-gray-600 mb-2">
+            Bienvenue dans la collaboration{' '}
+            <span className="font-semibold text-teal-700">{orgName}</span>.
+          </p>
+          <p className="text-sm text-gray-400">
+            Redirection vers la connexion...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-teal-100 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-8">
         <div className="text-center mb-8">
           <div className="text-4xl mb-2">✉️</div>
           <h1 className="text-2xl font-bold text-gray-800">Rejoindre l'organisation</h1>
-          <p className="text-gray-500 mt-1">Complétez votre profil pour accepter l'invitation</p>
+          <p className="text-gray-500 mt-1">
+            {orgName ? (
+              <>Vous êtes invité à rejoindre <span className="font-semibold">{orgName}</span></>
+            ) : (
+              'Complétez votre profil pour accepter l\'invitation'
+            )}
+          </p>
         </div>
 
         {error && (

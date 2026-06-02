@@ -18,15 +18,26 @@ export class MailService {
     });
   }
 
-  async sendWelcomeEmail(to: string, name: string, resetToken?: string): Promise<void> {
+  async sendWelcomeEmail(
+    to: string,
+    name: string,
+    resetToken?: string,
+  ): Promise<void> {
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-    const resetLink = resetToken ? `${frontendUrl}/reset-password/${resetToken}` : undefined;
+    const resetLink = resetToken
+      ? `${frontendUrl}/reset-password/${resetToken}`
+      : undefined;
     const subject = 'Bienvenue sur VeilleAI';
     const html = this.welcomeTemplate(name, resetLink);
     await this.send(to, subject, html);
   }
 
-  async sendInvitationEmail(to: string, token: string, orgName: string, role: string): Promise<void> {
+  async sendInvitationEmail(
+    to: string,
+    token: string,
+    orgName: string,
+    role: string,
+  ): Promise<void> {
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
     const inviteLink = `${frontendUrl}/invitation/${token}`;
     const subject = `Invitation à rejoindre ${orgName} sur VeilleAI`;
@@ -60,7 +71,7 @@ export class MailService {
         return;
       } catch (err) {
         this.logger.error(
-          `Email attempt ${attempt}/${retries} failed for ${to}: ${err.message}`,
+          `Email attempt ${attempt}/${retries} failed for ${to}: ${err instanceof Error ? err.message : String(err)}`,
         );
         if (attempt === retries) throw err;
         await new Promise((r) => setTimeout(r, 2000 * attempt));
@@ -69,11 +80,14 @@ export class MailService {
   }
 
   private welcomeTemplate(name: string, resetLink?: string): string {
-    const resetSection = resetLink ? `
+    const resetSection = resetLink
+      ? `
+       
       <div style="text-align:center;margin:24px 0;">
         <a href="${resetLink}" style="display:inline-block;padding:12px 32px;background:linear-gradient(135deg,#3b82f6,#6366f1);color:#fff;text-decoration:none;border-radius:8px;font-weight:600;font-size:14px;">Définir mon mot de passe</a>
         <p style="font-size:12px;color:#64748b;margin-top:8px;">Ce lien est valable 1 heure</p>
-      </div>` : '';
+      </div>`
+      : '';
 
     return `
       <div style="max-width:600px;margin:0 auto;font-family:system-ui,sans-serif;background:#0f1117;color:#e2e8f0;border-radius:12px;overflow:hidden;">
@@ -98,7 +112,11 @@ export class MailService {
     `;
   }
 
-  private invitationTemplate(inviteLink: string, orgName: string, role: string): string {
+  private invitationTemplate(
+    inviteLink: string,
+    orgName: string,
+    role: string,
+  ): string {
     const roleLabels: Record<string, string> = {
       PROPRIETAIRE: 'Propriétaire',
       MANAGER: 'Manager',
