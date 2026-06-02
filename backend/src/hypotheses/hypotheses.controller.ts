@@ -35,6 +35,11 @@ export class HypothesesController {
     return this.hypothesesService.getHypotheses(axisId, req.user.userId);
   }
 
+  @Put('reorder')
+  reorder(@Param('axisId') axisId: string, @Body() body: any, @Request() req: any) {
+    return this.hypothesesService.reorderHypotheses(axisId, req.user.userId, body.orderedIds);
+  }
+
   @Put(':hypothesisId')
   update(
     @Param('hypothesisId') id: string,

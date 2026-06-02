@@ -35,6 +35,11 @@ export class ObjectivesController {
     return this.objectivesService.getObjectives(projectId, req.user.userId);
   }
 
+  @Put('reorder')
+  reorder(@Param('projectId') projectId: string, @Body() body: any, @Request() req: any) {
+    return this.objectivesService.reorderObjectives(projectId, req.user.userId, body.orderedIds);
+  }
+
   @Put(':objectiveId')
   update(
     @Param('objectiveId') objectiveId: string,

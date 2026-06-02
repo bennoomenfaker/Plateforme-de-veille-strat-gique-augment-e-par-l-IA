@@ -79,4 +79,10 @@ export class ProjectsController {
   async remove(@Param('id') id: string, @Request() req: any) {
     return this.projectsService.deleteProject(id, req.user.userId);
   }
+
+  // POST /projects/:id/duplicate → dupliquer un projet avec toute sa hiérarchie
+  @Post(':id/duplicate')
+  async duplicate(@Param('id') id: string, @Request() req: any) {
+    return this.projectsService.duplicateProject(id, req.user.userId);
+  }
 }

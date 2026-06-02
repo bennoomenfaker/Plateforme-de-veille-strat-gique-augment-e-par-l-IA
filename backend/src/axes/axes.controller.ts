@@ -31,6 +31,11 @@ export class AxesController {
     return this.axesService.getAxes(objectiveId, req.user.userId);
   }
 
+  @Put('reorder')
+  reorder(@Param('objectiveId') objectiveId: string, @Body() body: any, @Request() req: any) {
+    return this.axesService.reorderAxes(objectiveId, req.user.userId, body.orderedIds);
+  }
+
   @Put(':axisId')
   update(
     @Param('axisId') axisId: string,

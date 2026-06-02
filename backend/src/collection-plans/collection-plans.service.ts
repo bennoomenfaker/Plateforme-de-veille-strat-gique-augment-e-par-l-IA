@@ -282,6 +282,19 @@ export class CollectionPlansService {
     return { message: 'Plan de collecte supprimé' };
   }
 
+  async reorderPlans(hypothesisId: string, userId: string, orderedIds: string[]) {
+    await this.checkHypothesisAccess(hypothesisId, userId, true);
+    await this.prisma.$transaction(async (tx) => {
+      for (let i = 0; i < orderedIds.length; i++) {
+        await tx.collectionPlan.update({
+          where: { id: orderedIds[i] },
+          data: { priority: i + 1 },
+        });
+      }
+    });
+    return { message: 'Ordre des plans mis à jour' };
+  }
+
   // ════════════════════════════════════════════════════════════════════════════
   // SOURCES
   // ════════════════════════════════════════════════════════════════════════════

@@ -114,6 +114,19 @@ export class ObjectivesService {
     return { message: 'Objectif supprimé avec succès' };
   }
 
+  async reorderObjectives(projectId: string, userId: string, orderedIds: string[]) {
+    await this.checkProjectAccess(projectId, userId);
+    await this.prisma.$transaction(async (tx) => {
+      for (let i = 0; i < orderedIds.length; i++) {
+        await tx.projectObjective.update({
+          where: { id: orderedIds[i] },
+          data: { priority: i + 1 },
+        });
+      }
+    });
+    return { message: 'Ordre mis à jour' };
+  }
+
   private async logActivity(
     userId: string,
     action: string,

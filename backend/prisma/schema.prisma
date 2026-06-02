@@ -241,6 +241,7 @@ model HypothesisPerimeter {
 model CollectionPlan {
   id                    String            @id @default(uuid())
   question              String
+  priority              Int               @default(1)
   frequency             Frequency         @default(DAILY)
   collection_start_date DateTime          @default(now())
   collection_end_date   DateTime?

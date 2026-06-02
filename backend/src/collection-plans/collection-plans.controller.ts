@@ -48,6 +48,11 @@ export class CollectionPlansController {
     return this.collectionPlansService.getPlanById(planId, req.user.userId);
   }
 
+  @Put('hypotheses/:hypothesisId/collection-plans/reorder')
+  reorder(@Param('hypothesisId') hypothesisId: string, @Body() body: any, @Request() req: any) {
+    return this.collectionPlansService.reorderPlans(hypothesisId, req.user.userId, body.orderedIds);
+  }
+
   @Put('collection-plans/:planId')
   update(
     @Param('planId') planId: string,

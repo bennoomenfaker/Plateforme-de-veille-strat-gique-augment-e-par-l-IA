@@ -86,6 +86,19 @@ export class AxesService {
     });
   }
 
+  async reorderAxes(objectiveId: string, userId: string, orderedIds: string[]) {
+    await this.checkObjectiveAccess(objectiveId, userId);
+    await this.prisma.$transaction(async (tx) => {
+      for (let i = 0; i < orderedIds.length; i++) {
+        await tx.projectAxis.update({
+          where: { id: orderedIds[i] },
+          data: { priority: i + 1 },
+        });
+      }
+    });
+    return { message: 'Ordre des axes mis à jour' };
+  }
+
   async deleteAxis(axisId: string, userId: string) {
     const axis = await this.prisma.projectAxis.findUnique({
       where: { id: axisId },

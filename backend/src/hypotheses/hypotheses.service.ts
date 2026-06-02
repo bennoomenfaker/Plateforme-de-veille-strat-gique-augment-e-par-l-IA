@@ -110,6 +110,19 @@ export class HypothesesService {
   /**
    * Point 5 : CRUD Complet (Delete)
    */
+  async reorderHypotheses(axisId: string, userId: string, orderedIds: string[]) {
+    await this.checkAxisAccess(axisId, userId);
+    await this.prisma.$transaction(async (tx) => {
+      for (let i = 0; i < orderedIds.length; i++) {
+        await tx.projectHypothesis.update({
+          where: { id: orderedIds[i] },
+          data: { priority: i + 1 },
+        });
+      }
+    });
+    return { message: 'Ordre des hypothèses mis à jour' };
+  }
+
   async deleteHypothesis(hypothesisId: string, userId: string) {
     const hypothesis = await this.prisma.projectHypothesis.findUnique({
       where: { id: hypothesisId },

@@ -2,6 +2,7 @@ import {
   Injectable,
   ForbiddenException,
   BadRequestException,
+  NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { OrgAccessService } from '../common/org-access.service';
@@ -340,6 +341,112 @@ export class ProjectsService {
   async getArchivedProjects(userId: string) {
     return this.prisma.project.findMany({
       where: { owner_user_id: userId, isActive: false, is_deleted: false },
+    });
+  }
+
+  async duplicateProject(id: string, userId: string) {
+    await this.checkAccess(id, userId);
+    const source = await this.prisma.project.findUnique({
+      where: { id },
+      include: {
+        perimeters: true,
+        objectives: {
+          include: {
+            axes: {
+              include: {
+                hypotheses: {
+                  include: {
+                    collection_plans: {
+                      include: { sources: true, keywords: true },
+                    },
+                    hypothesis_perimeters: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!source) throw new NotFoundException('Projet introuvable');
+
+    return this.prisma.$transaction(async (tx) => {
+      const objMap = new Map<string, string>();
+      const permMap = new Map<string, string>();
+
+      const newProject = await tx.project.create({
+        data: {
+          nom: `Copie de ${source.nom}`,
+          description: source.description,
+          monitoring_type: source.monitoring_type,
+          keywords: source.keywords,
+          owner_user_id: userId,
+          organisation_id: source.organisation_id,
+          folder_id: source.folder_id,
+        },
+      });
+
+      for (const p of source.perimeters) {
+        const np = await tx.projectPerimeter.create({
+          data: { name: p.name, type: p.type, value: p.value, project_id: newProject.id },
+        });
+        permMap.set(p.id, np.id);
+      }
+
+      for (const obj of source.objectives) {
+        const newObj = await tx.projectObjective.create({
+          data: { content: obj.content, priority: obj.priority, project_id: newProject.id },
+        });
+        objMap.set(obj.id, newObj.id);
+
+        for (const axe of obj.axes) {
+          const newAxe = await tx.projectAxis.create({
+            data: { name: axe.name, description: axe.description, priority: axe.priority, objective_id: newObj.id },
+          });
+
+          for (const hyp of axe.hypotheses) {
+            const newHyp = await tx.projectHypothesis.create({
+              data: { content: hyp.content, priority: hyp.priority, statut: hyp.statut, axis_id: newAxe.id },
+            });
+
+            for (const plan of hyp.collection_plans || []) {
+              await tx.collectionPlan.create({
+                data: {
+                  question: plan.question,
+                  frequency: plan.frequency,
+                  hypothesis_id: newHyp.id,
+                  sources: {
+                    create: (plan.sources || []).map((s: any) => ({
+                      source_type: s.source_type,
+                      source_label: s.source_label,
+                      source_url: s.source_url,
+                      frequency: s.frequency,
+                      metadata: s.metadata,
+                    })),
+                  },
+                  keywords: {
+                    create: (plan.keywords || []).map((k: any) => ({
+                      keyword: k.keyword,
+                      keyword_type: k.keyword_type,
+                    })),
+                  },
+                },
+              });
+            }
+
+            for (const hp of hyp.hypothesis_perimeters || []) {
+              const newPermId = permMap.get(hp.perimeter_id);
+              if (newPermId) {
+                await tx.hypothesisPerimeter.create({
+                  data: { hypothesis_id: newHyp.id, perimeter_id: newPermId },
+                });
+              }
+            }
+          }
+        }
+      }
+
+      return newProject;
     });
   }
 

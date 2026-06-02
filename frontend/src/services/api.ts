@@ -88,6 +88,7 @@ export const projectsService = {
   update: (id: string, data: any) => api.patch(`/projects/${id}`, data),
   delete: (id: string) => api.delete(`/projects/${id}`),
   archive: (id: string) => api.patch(`/projects/${id}/archive`),
+  duplicate: (id: string) => api.post(`/projects/${id}/duplicate`),
 };
 
 // --- 3. ORGANISATIONS ---
@@ -117,10 +118,12 @@ export const collectionPlansService = {
     api.get(`/collection-plans?projectId=${projectId}`),
   getById: (id: string) => api.get(`/collection-plans/${id}`),
   create: (data: any) => api.post('/collection-plans', data),
-  update: (id: string, data: any) => api.patch(`/collection-plans/${id}`, data),
+  update: (id: string, data: any) => api.put(`/collection-plans/${id}`, data),
   delete: (id: string) => api.delete(`/collection-plans/${id}`),
   triggerCollection: (id: string) =>
     api.post(`/collection-plans/${id}/collect`),
+  reorder: (hypothesisId: string, orderedIds: string[]) =>
+    api.put(`/hypotheses/${hypothesisId}/collection-plans/reorder`, { orderedIds }),
 };
 
 export const collectionPlanService = {
@@ -213,31 +216,37 @@ export const uploadService = {
 // --- 10. OBJECTIVES / AXES / HYPOTHESES ---
 export const objectiveService = {
   getByProject: (projectId: string) =>
-    api.get(`/objectives?project_id=${projectId}`),
+    api.get(`/projects/${projectId}/objectives`),
   create: (projectId: string, data: any) =>
-    api.post('/objectives', { ...data, project_id: projectId }),
-  update: (_projectId: string, id: string, data: any) =>
-    api.patch(`/objectives/${id}`, data),
-  delete: (_projectId: string, id: string) =>
-    api.delete(`/objectives/${id}`),
+    api.post(`/projects/${projectId}/objectives`, data),
+  update: (projectId: string, id: string, data: any) =>
+    api.put(`/projects/${projectId}/objectives/${id}`, data),
+  delete: (projectId: string, id: string) =>
+    api.delete(`/projects/${projectId}/objectives/${id}`),
+  reorder: (projectId: string, orderedIds: string[]) =>
+    api.put(`/projects/${projectId}/objectives/reorder`, { orderedIds }),
 };
 
 export const axisService = {
   create: (objectiveId: string, data: any) =>
-    api.post('/axes', { ...data, objective_id: objectiveId }),
-  update: (_objectiveId: string, id: string, data: any) =>
-    api.patch(`/axes/${id}`, data),
-  delete: (_objectiveId: string, id: string) =>
-    api.delete(`/axes/${id}`),
+    api.post(`/objectives/${objectiveId}/axes`, data),
+  update: (objectiveId: string, id: string, data: any) =>
+    api.put(`/objectives/${objectiveId}/axes/${id}`, data),
+  delete: (objectiveId: string, id: string) =>
+    api.delete(`/objectives/${objectiveId}/axes/${id}`),
+  reorder: (objectiveId: string, orderedIds: string[]) =>
+    api.put(`/objectives/${objectiveId}/axes/reorder`, { orderedIds }),
 };
 
 export const hypothesisService = {
   create: (axisId: string, data: any) =>
-    api.post('/hypotheses', { ...data, axis_id: axisId }),
-  update: (_axisId: string, id: string, data: any) =>
-    api.patch(`/hypotheses/${id}`, data),
-  delete: (_axisId: string, id: string) =>
-    api.delete(`/hypotheses/${id}`),
+    api.post(`/axes/${axisId}/hypotheses`, data),
+  update: (axisId: string, id: string, data: any) =>
+    api.put(`/axes/${axisId}/hypotheses/${id}`, data),
+  delete: (axisId: string, id: string) =>
+    api.delete(`/axes/${axisId}/hypotheses/${id}`),
+  reorder: (axisId: string, orderedIds: string[]) =>
+    api.put(`/axes/${axisId}/hypotheses/reorder`, { orderedIds }),
 };
 
 // Aliases pour compatibilité avec les imports existants

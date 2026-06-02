@@ -6,7 +6,7 @@ export class LlmProviderService {
   private readonly logger = new Logger(LlmProviderService.name);
   private readonly ollamaUrl =
     process.env.OLLAMA_URL || 'http://localhost:11434';
-  private readonly model = process.env.OLLAMA_MODEL || 'mistral';
+  private readonly model =     process.env.OLLAMA_MODEL || 'mistral';
 
   async generate(prompt: string): Promise<string> {
     try {
