@@ -382,10 +382,12 @@ export class AnalyseService {
       }
     }
 
-    const wordCloud = [
-      ...Object.entries(entityFreq).map(([text, value]) => ({ text, value })),
-      ...Object.entries(topicFreq).map(([text, value]) => ({ text, value })),
-    ]
+    const merged: Record<string, number> = { ...entityFreq };
+    for (const [text, value] of Object.entries(topicFreq)) {
+      merged[text] = (merged[text] || 0) + value;
+    }
+    const wordCloud = Object.entries(merged)
+      .map(([text, value]) => ({ text, value }))
       .sort((a, b) => b.value - a.value)
       .slice(0, 50);
 

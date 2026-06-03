@@ -464,6 +464,7 @@ enum ProcessingStatus {
   DONE
   FAILED
   SKIPPED
+  CANCELLED
 }
 
 model ProcessedItem {
@@ -582,6 +583,61 @@ model AiEnrichmentJob {
 
   @@index([project_id])
   @@index([status])
+}
+
+model WeakSignal {
+  id                String   @id @default(uuid())
+  project_id        String
+  entity_name       String
+  entity_type       String   @default("ENTITY")
+  score             Float    @default(0)
+  novelty_score     Float    @default(0)
+  growth_score      Float    @default(0)
+  cross_source_score Float   @default(0)
+  frequency_score   Float    @default(0)
+  explanation       String?  @db.Text
+  source_count      Int      @default(0)
+  mention_count     Int      @default(0)
+  first_seen_at     DateTime
+  last_seen_at      DateTime @default(now())
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+
+  @@index([project_id])
+  @@index([project_id, score])
+}
+
+model TrendPoint {
+  id          String   @id @default(uuid())
+  project_id  String
+  entity_name String
+  entity_type String   @default("TOPIC")
+  date        DateTime
+  frequency   Int      @default(0)
+  source_count Int     @default(0)
+  created_at  DateTime @default(now())
+
+  @@unique([project_id, entity_name, date])
+  @@index([project_id, entity_name])
+  @@index([project_id, date])
+}
+
+model Insight {
+  id             String   @id @default(uuid())
+  project_id     String
+  type           String
+  title          String
+  description    String   @db.Text
+  confidence     Float    @default(0)
+  evidence_count Int      @default(0)
+  metadata       Json?
+  is_read        Boolean  @default(false)
+  is_dismissed   Boolean  @default(false)
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+
+  @@index([project_id, type])
+  @@index([project_id, created_at])
 }
 
 model HypothesisEvaluation {

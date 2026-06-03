@@ -322,6 +322,56 @@ export interface AiEnrichmentStats {
   hypothesis_evaluations?: HypothesisEvaluation[];
 }
 
+// ─── Insight Engine ────────────────────────────────────────────────────────────
+
+export interface WeakSignal {
+  id: string;
+  project_id: string;
+  entity_name: string;
+  entity_type: 'ENTITY' | 'TOPIC';
+  score: number;
+  novelty_score: number;
+  growth_score: number;
+  cross_source_score: number;
+  frequency_score: number;
+  explanation?: string;
+  source_count: number;
+  mention_count: number;
+  first_seen_at: string;
+  last_seen_at: string;
+  created_at: string;
+}
+
+export interface Insight {
+  id: string;
+  project_id: string;
+  type: 'TREND' | 'ANOMALY' | 'COMPETITOR' | 'HYPOTHESIS' | 'WEAK_SIGNAL';
+  title: string;
+  description: string;
+  confidence: number;
+  evidence_count: number;
+  metadata?: any;
+  is_read: boolean;
+  is_dismissed: boolean;
+  created_at: string;
+}
+
+export interface TrendPoint {
+  id: string;
+  project_id: string;
+  entity_name: string;
+  entity_type: 'TOPIC' | 'ENTITY';
+  date: string;
+  frequency: number;
+  source_count: number;
+}
+
+export interface InsightStats {
+  total: number;
+  unread: number;
+  byType: Record<string, number>;
+}
+
 // ─── Sprint 6 — Dashboard ─────────────────────────────────────────────────────
 
 export interface PipelineStats {

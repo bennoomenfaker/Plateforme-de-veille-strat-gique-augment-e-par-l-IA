@@ -90,10 +90,16 @@ export class AlertesService {
             });
             if (user?.email) {
               const score = Math.round((item.relevance_score ?? 0) * 100);
-              await this.mailService.sendAlertEmail(user.email, project.nom, score);
+              await this.mailService.sendAlertEmail(
+                user.email,
+                project.nom,
+                score,
+              );
             }
           } catch (err) {
-            this.logger.error(`Échec envoi email alerte critique: ${err instanceof Error ? err.message : String(err)}`);
+            this.logger.error(
+              `Échec envoi email alerte critique: ${err instanceof Error ? err.message : String(err)}`,
+            );
           }
         }
       }
@@ -170,8 +176,8 @@ export class AlertesService {
   }
 
   async markAsRead(alertId: string, userId: string) {
-    return this.prisma.alert.update({
-      where: { id: alertId },
+    return this.prisma.alert.updateMany({
+      where: { id: alertId, userId },
       data: { isRead: true },
     });
   }
@@ -185,7 +191,9 @@ export class AlertesService {
   }
 
   async deleteAlert(alertId: string, userId: string) {
-    await this.prisma.alert.delete({ where: { id: alertId } });
+    await this.prisma.alert.deleteMany({
+      where: { id: alertId, userId },
+    });
     return { message: 'Alerte supprimée' };
   }
 

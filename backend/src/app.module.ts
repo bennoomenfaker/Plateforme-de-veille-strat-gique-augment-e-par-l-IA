@@ -25,6 +25,7 @@ import { UploadModule } from './upload/upload.module'; // ← AJOUTÉ
 import { ProcessingModule } from './processing/processing.module';
 import { CommonModule } from './common/common.module';
 import { ReportsModule } from './reports/reports.module';
+import { InsightEngineModule } from './insight-engine/insight-engine.module';
 
 @Module({
   imports: [
@@ -55,6 +56,7 @@ import { ReportsModule } from './reports/reports.module';
     UploadModule,
     ProcessingModule,
     ReportsModule,
+    InsightEngineModule,
   ],
   controllers: [AppController],
   providers: [AppService],

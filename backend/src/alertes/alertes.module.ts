@@ -8,7 +8,7 @@ import { AuthMailModule } from '../auth-mail/auth-mail.module';
 @Module({
   imports: [
     JwtModule.register({
-      secret: 'SECRET_KEY_SUPER_FORTE',
+      secret: process.env.JWT_SECRET || 'SECRET_KEY_SUPER_FORTE',
       signOptions: { expiresIn: '1d' },
     }),
     AuthMailModule,

@@ -27,8 +27,8 @@ export default function ProjectDetailPage() {
   const queryClient = useQueryClient();
 
   const { user } = useAuth();
-  const { canWrite } = useOrgRole();
-  const canCreateOrModify = user?.type_utilisateur === 'INDIVIDUEL' || canWrite;
+  const { canWrite, role } = useOrgRole();
+  const canCreateOrModify = (user?.type_utilisateur === 'INDIVIDUEL' && !role) || canWrite;
 
   const [analysing, setAnalysing]   = useState(false);
   const [analyseMsg, setAnalyseMsg] = useState('');

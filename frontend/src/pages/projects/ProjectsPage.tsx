@@ -10,9 +10,9 @@ export default function ProjectsPage() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { canWrite } = useOrgRole();
+  const { canWrite, role } = useOrgRole();
 
-  const canCreateOrModify = user?.type_utilisateur === 'INDIVIDUEL' || canWrite;
+  const canCreateOrModify = (user?.type_utilisateur === 'INDIVIDUEL' && !role) || canWrite;
 
   const [tab, setTab] = useState<'active' | 'closed'>('active');
 

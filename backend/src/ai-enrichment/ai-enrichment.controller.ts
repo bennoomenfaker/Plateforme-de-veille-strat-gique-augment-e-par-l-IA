@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Patch, Param, Query, UseGuards } from '@nestjs/common';
 import { AiEnrichmentService } from './ai-enrichment.service';
 import { JwtAuthGuard } from '../auth/jwt.guard';
 
@@ -8,8 +8,11 @@ export class AiEnrichmentController {
   constructor(private readonly aiService: AiEnrichmentService) {}
 
   @Post('projects/:projectId/enrich')
-  enrichProject(@Param('projectId') projectId: string) {
-    return this.aiService.enrichProject(projectId);
+  enrichProject(
+    @Param('projectId') projectId: string,
+    @Query('force') force?: string,
+  ) {
+    return this.aiService.enrichProject(projectId, force === 'true');
   }
 
   @Post('collection-plans/:planId/enrich')
@@ -44,6 +47,16 @@ export class AiEnrichmentController {
     @Query('limit') limit = '10',
   ) {
     return this.aiService.getEnrichmentJobs(projectId, parseInt(limit, 10));
+  }
+
+  @Get('enrichment-jobs/:jobId')
+  getJobStatus(@Param('jobId') jobId: string) {
+    return this.aiService.getJobById(jobId);
+  }
+
+  @Patch('enrichment-jobs/:jobId/cancel')
+  async cancelJob(@Param('jobId') jobId: string) {
+    return this.aiService.cancelJob(jobId);
   }
 
   @Get('projects/:projectId/enrichment-stats')

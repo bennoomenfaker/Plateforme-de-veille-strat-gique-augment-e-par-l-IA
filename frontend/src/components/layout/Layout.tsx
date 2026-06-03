@@ -18,7 +18,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   const { data: unreadData } = useQuery({
     queryKey: ['alerts-unread'],
-    queryFn: () => alertsService.getMyAlerts().then(r => ({ unread: r.data?.data?.filter((a: any) => !a.isRead).length ?? 0 })),
+    queryFn: () => alertsService.getUnreadCount().then(r => r.data),
     refetchInterval: 60000,
   });
   const unreadCount = unreadData?.unread ?? 0;

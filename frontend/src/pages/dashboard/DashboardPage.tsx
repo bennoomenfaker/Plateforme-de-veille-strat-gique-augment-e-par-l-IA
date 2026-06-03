@@ -6,7 +6,7 @@ import type { Node, Edge } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { useAuth } from '../../context/AuthContext';
 import Layout from '../../components/layout/Layout';
-import api, { analyseService } from '../../services/api';
+import api, { analyseService, insightService, alertsService } from '../../services/api';
 
 type Period = '7d' | '30d' | '90d' | 'custom';
 
@@ -16,12 +16,25 @@ const DEFAULT_WIDGETS: Widget[] = [
   { id: 'stats', label: 'Statistiques', visible: true },
   { id: 'wordcloud', label: 'Nuage de mots', visible: true },
   { id: 'network', label: 'Réseau d\'entités', visible: true },
+  { id: 'weak-signals', label: 'Signaux faibles', visible: true },
+  { id: 'insights-feed', label: 'Flux d\'insights', visible: true },
 ];
 
 function loadWidgets(): Widget[] {
   try {
     const saved = localStorage.getItem('dashboard-widgets');
-    if (saved) return JSON.parse(saved);
+    if (saved) {
+      const parsed: Widget[] = JSON.parse(saved);
+      const defaultIds = new Set(DEFAULT_WIDGETS.map(w => w.id));
+      const savedIds = new Set(parsed.map(w => w.id));
+      const missing = DEFAULT_WIDGETS.filter(w => !savedIds.has(w.id));
+      if (missing.length) {
+        const merged = [...parsed, ...missing];
+        localStorage.setItem('dashboard-widgets', JSON.stringify(merged));
+        return merged;
+      }
+      return parsed;
+    }
   } catch {}
   return DEFAULT_WIDGETS;
 }
@@ -36,6 +49,7 @@ export default function DashboardPage() {
   const [compareEnd, setCompareEnd] = useState('');
   const [widgets, setWidgets] = useState<Widget[]>(loadWidgets);
   const [showSettings, setShowSettings] = useState(false);
+  const [insightProjectId, setInsightProjectId] = useState('');
 
   useEffect(() => {
     localStorage.setItem('dashboard-widgets', JSON.stringify(widgets));
@@ -62,7 +76,7 @@ export default function DashboardPage() {
 
   const { data: alertsData } = useQuery({
     queryKey: ['alerts-unread'],
-    queryFn: () => api.get('/alertes/unread').then(r => r.data),
+    queryFn: () => alertsService.getUnreadCount().then(r => r.data),
   });
 
   const allProjects = [
@@ -99,6 +113,36 @@ export default function DashboardPage() {
 
   const periodLabel = (p: Period) =>
     p === '7d' ? '7 jours' : p === '30d' ? '30 jours' : p === '90d' ? '90 jours' : 'Personnalisé';
+
+  const effectiveProjectId = insightProjectId || allProjects[0]?.id || '';
+
+  const { data: weakSignalsData } = useQuery({
+    queryKey: ['weak-signals', effectiveProjectId],
+    queryFn: () => insightService.getWeakSignals(effectiveProjectId).then(r => r.data),
+    enabled: !!effectiveProjectId,
+    staleTime: 60_000,
+  });
+
+  const { data: insightsData } = useQuery({
+    queryKey: ['insights', effectiveProjectId],
+    queryFn: () => insightService.getInsights(effectiveProjectId).then(r => r.data),
+    enabled: !!effectiveProjectId,
+    staleTime: 60_000,
+  });
+
+  const { data: trendsData } = useQuery({
+    queryKey: ['trends', effectiveProjectId],
+    queryFn: () => insightService.detectTrends(effectiveProjectId).then(r => r.data),
+    enabled: !!effectiveProjectId,
+    staleTime: 120_000,
+  });
+
+  const { data: anomaliesData } = useQuery({
+    queryKey: ['anomalies', effectiveProjectId],
+    queryFn: () => insightService.detectAnomalies(effectiveProjectId).then(r => r.data),
+    enabled: !!effectiveProjectId,
+    staleTime: 120_000,
+  });
 
   return (
     <Layout>
@@ -248,10 +292,56 @@ export default function DashboardPage() {
               if (widget.id === 'network') return (
                 <EntityNetworkWidget key="network" network={current?.entityNetwork} />
               );
+              if (widget.id === 'weak-signals') return (
+                <WeakSignalsWidget key="weak-signals" signals={weakSignalsData ?? []} />
+              );
+              if (widget.id === 'insights-feed') return (
+                <InsightsFeedWidget key="insights-feed" insights={insightsData ?? []} anomalies={anomaliesData ?? []} />
+              );
               return null;
             })}
           </div>
         )}
+
+        {/* Insight Engine */}
+        <div className="rounded-2xl p-6 mt-6" style={{ background: '#161b27', border: '1px solid #1e2535' }}>
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-widest" style={{ color: '#6b7280' }}>
+                Insight Engine
+              </p>
+              <p className="text-[10px] mt-0.5" style={{ color: '#4b5568' }}>
+                Détection de tendances, signaux faibles, anomalies
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <select
+                value={insightProjectId}
+                onChange={e => setInsightProjectId(e.target.value)}
+                className="text-xs px-3 py-1.5 rounded-lg"
+                style={{ background: '#1e2535', color: '#e5e7eb', border: '1px solid #374151' }}>
+                <option value="">Sélectionner un projet</option>
+                {allProjects.map((p: any) => (
+                  <option key={p.id} value={p.id}>{p.nom}</option>
+                ))}
+              </select>
+              <button
+                onClick={async () => {
+                  if (!insightProjectId) return;
+                  await insightService.generate(insightProjectId);
+                }}
+                disabled={!insightProjectId}
+                className="text-xs font-bold px-4 py-1.5 rounded-lg transition disabled:opacity-40"
+                style={{ background: 'linear-gradient(135deg,#3b82f6,#6366f1)', color: 'white' }}>
+                Générer les insights
+              </button>
+            </div>
+          </div>
+
+          {effectiveProjectId && trendsData && (
+            <TrendsWidget trends={trendsData} />
+          )}
+        </div>
 
         {/* Projets récents */}
         <div className="rounded-2xl overflow-hidden mt-6" style={{ background: '#161b27', border: '1px solid #1e2535' }}>
@@ -388,11 +478,15 @@ function WordCloudWidget({ words }: { words: { text: string; value: number }[] }
   const maxVal = Math.max(...words.map(w => w.value), 1);
   const colors = ['#60a5fa', '#34d399', '#fbbf24', '#a78bfa', '#f87171', '#22d3ee', '#f472b6', '#fb923c'];
 
+  const topWords = words.slice(0, 5);
+
   return (
     <div className="rounded-2xl p-6" style={{ background: '#161b27', border: '1px solid #1e2535' }}>
       <p className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: '#6b7280' }}>
         Nuage de mots
       </p>
+
+      {/* Cloud */}
       <div className="flex flex-wrap items-center justify-center gap-2 p-4 min-h-[200px]"
         style={{ background: '#1e2535', borderRadius: '0.75rem' }}>
         {words.slice(0, 40).map((w, i) => {
@@ -401,7 +495,7 @@ function WordCloudWidget({ words }: { words: { text: string; value: number }[] }
           const color = colors[i % colors.length];
           return (
             <span
-              key={w.text}
+              key={w.text + '-' + i}
               className="inline-block transition hover:opacity-80 cursor-default"
               style={{
                 fontSize: `${size}rem`,
@@ -417,30 +511,87 @@ function WordCloudWidget({ words }: { words: { text: string; value: number }[] }
           );
         })}
       </div>
+
+      {/* Top words breakdown */}
+      {topWords.length > 0 && (
+        <div className="mt-4">
+          <p className="text-[10px] font-bold uppercase tracking-widest mb-2" style={{ color: '#6b7280' }}>
+            Mots-clés les plus fréquents
+          </p>
+          <div className="space-y-1.5">
+            {topWords.map((w, idx) => {
+              const pct = Math.round((w.value / maxVal) * 100);
+              return (
+                <div key={w.text + '-' + idx} className="flex items-center gap-3">
+                  <span className="text-xs font-medium w-28 truncate" style={{ color: '#e5e7eb' }}>
+                    {w.text}
+                  </span>
+                  <div className="flex-1 h-3 rounded-full overflow-hidden" style={{ background: '#1e2535' }}>
+                    <div
+                      className="h-full rounded-full transition-all"
+                      style={{
+                        width: `${pct}%`,
+                        background: 'linear-gradient(90deg, #3b82f6, #a78bfa)',
+                      }}
+                    />
+                  </div>
+                  <span className="text-[10px] font-bold w-8 text-right" style={{ color: '#9ca3af' }}>
+                    {w.value}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 /* ─── Entity network graph widget ─── */
 function EntityNetworkWidget({ network }: { network: any }) {
+  const colors = ['#3b82f6', '#34d399', '#fbbf24', '#a78bfa', '#f87171', '#22d3ee', '#f472b6'];
+
+  const nodeDegrees = useMemo(() => {
+    const deg: Record<string, number> = {};
+    network?.edges?.forEach((e: any) => {
+      deg[e.source] = (deg[e.source] || 0) + e.weight;
+      deg[e.target] = (deg[e.target] || 0) + e.weight;
+    });
+    return deg;
+  }, [network]);
+
   const nodes: Node[] = useMemo(() => {
     if (!network?.nodes?.length) return [];
     const maxCount = Math.max(...network.nodes.map((n: any) => n.count), 1);
-    return network.nodes.map((n: any) => ({
-      id: n.id,
-      position: { x: Math.random() * 500, y: Math.random() * 400 },
-      data: { label: n.name },
-      style: {
-        background: '#3b82f6',
-        color: 'white',
-        border: 'none',
-        borderRadius: '999px',
-        padding: `${6 + (n.count / maxCount) * 10}px ${10 + (n.count / maxCount) * 12}px`,
-        fontSize: `${10 + (n.count / maxCount) * 3}px`,
-        fontWeight: 600,
-      },
-    }));
-  }, [network]);
+    const sorted = [...network.nodes].sort(
+      (a: any, b: any) => (nodeDegrees[b.id] || 0) - (nodeDegrees[a.id] || 0),
+    );
+    const centerX = 300, centerY = 250, radius = 160;
+    return sorted.map((n: any, i: number) => {
+      const angle = (i / sorted.length) * 2 * Math.PI - Math.PI / 2;
+      const tier = Math.floor((n.count / maxCount) * colors.length);
+      return {
+        id: n.id,
+        position: {
+          x: centerX + radius * Math.cos(angle),
+          y: centerY + radius * Math.sin(angle),
+        },
+        data: {
+          label: `${n.name} (${n.count})`,
+        },
+        style: {
+          background: colors[Math.min(tier, colors.length - 1)],
+          color: 'white',
+          border: 'none',
+          borderRadius: '999px',
+          padding: `${6 + (n.count / maxCount) * 8}px ${10 + (n.count / maxCount) * 10}px`,
+          fontSize: `${10 + (n.count / maxCount) * 3}px`,
+          fontWeight: 600,
+        },
+      };
+    });
+  }, [network, nodeDegrees]);
 
   const edges: Edge[] = useMemo(() => {
     if (!network?.edges?.length) return [];
@@ -449,10 +600,31 @@ function EntityNetworkWidget({ network }: { network: any }) {
       id: `${e.source}-${e.target}`,
       source: e.source,
       target: e.target,
-      style: { stroke: '#4b5568', strokeWidth: 1 + (e.weight / maxWeight) * 3 },
-      markerEnd: undefined,
-      type: 'default',
+      label: `${e.weight}`,
+      style: {
+        stroke: '#6b7280',
+        strokeWidth: 1 + (e.weight / maxWeight) * 4,
+      },
+      labelStyle: { fill: '#9ca3af', fontSize: 9 },
+      labelBgStyle: { fill: '#1e2535', fillOpacity: 0.8 },
+      labelBgPadding: [4, 2] as [number, number],
+      labelBgBorderRadius: 4,
+      type: 'smoothstep',
+      animated: false,
     }));
+  }, [network]);
+
+  const topConnections = useMemo(() => {
+    if (!network?.edges?.length) return [];
+    const nodeMap = new Map(network.nodes.map((n: any) => [n.id, n.name]));
+    return [...network.edges]
+      .sort((a: any, b: any) => b.weight - a.weight)
+      .slice(0, 5)
+      .map((e: any) => ({
+        source: nodeMap.get(e.source) || e.source,
+        target: nodeMap.get(e.target) || e.target,
+        weight: e.weight,
+      }));
   }, [network]);
 
   if (!network?.nodes?.length) return null;
@@ -462,7 +634,7 @@ function EntityNetworkWidget({ network }: { network: any }) {
       <p className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: '#6b7280' }}>
         Réseau de relations entre entités
       </p>
-      <div className="h-[400px] rounded-xl overflow-hidden" style={{ background: '#1e2535' }}>
+      <div className="h-[500px] rounded-xl overflow-hidden" style={{ background: '#1e2535' }}>
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -473,9 +645,214 @@ function EntityNetworkWidget({ network }: { network: any }) {
           <Controls />
         </ReactFlow>
       </div>
-      <p className="text-[10px] mt-2" style={{ color: '#4b5568' }}>
-        Les entités sont reliées quand elles apparaissent dans un même article enrichi. La taille = fréquence.
+
+      {/* Key connections summary */}
+      {topConnections.length > 0 && (
+        <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
+          {topConnections.map((c, i) => (
+            <div key={i} className="rounded-xl p-2.5 text-center"
+              style={{ background: '#1e2535', border: '1px solid #2d3748' }}>
+              <p className="text-[10px] leading-tight" style={{ color: '#9ca3af' }}>
+                {c.source} ↔ {c.target}
+              </p>
+              <p className="text-xs font-bold mt-1" style={{ color: '#fbbf24' }}>
+                {c.weight} co-occurrence{c.weight > 1 ? 's' : ''}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Legend */}
+      <div className="flex flex-wrap gap-3 mt-3 text-[10px]" style={{ color: '#6b7280' }}>
+        <span className="flex items-center gap-1">
+          <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: '#3b82f6' }} /> Faible
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: '#a78bfa' }} /> Moyen
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: '#f87171' }} /> Élevé
+        </span>
+        <span>•</span>
+        <span>Les entités sont reliées quand elles apparaissent dans un même article. Taille = fréquence.</span>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Weak Signals widget ─── */
+function WeakSignalsWidget({ signals }: { signals: any[] }) {
+  if (!signals || signals.length === 0) return (
+    <div className="rounded-2xl p-6" style={{ background: '#161b27', border: '1px solid #1e2535' }}>
+      <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: '#6b7280' }}>Signaux faibles</p>
+      <p className="text-xs" style={{ color: '#6b7280' }}>Aucun signal faible détecté. Lancez une génération d'insights.</p>
+    </div>
+  );
+
+  const severityColor = (score: number) => {
+    if (score >= 0.7) return '#ef4444';
+    if (score >= 0.5) return '#f59e0b';
+    return '#3b82f6';
+  };
+
+  return (
+    <div className="rounded-2xl p-6" style={{ background: '#161b27', border: '1px solid #1e2535' }}>
+      <p className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: '#6b7280' }}>
+        Signaux faibles ({signals.filter((s: any) => s.score >= 0.3).length})
       </p>
+      <div className="space-y-2">
+        {signals.slice(0, 10).map((s: any) => (
+          <div key={s.id} className="rounded-xl p-3 flex items-center gap-3"
+            style={{ background: '#1e2535' }}>
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold shrink-0"
+              style={{ background: severityColor(s.score), color: 'white' }}>
+              {Math.round(s.score * 100)}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-white truncate">{s.entity_name}</p>
+              <p className="text-[10px] mt-0.5" style={{ color: '#9ca3af' }}>
+                {s.entity_type === 'ENTITY' ? 'Entité' : 'Sujet'} · {s.source_count} source(s) · {s.mention_count} mention(s)
+              </p>
+              {s.explanation && (
+                <p className="text-[10px] mt-1 italic" style={{ color: '#6b7280' }}>{s.explanation}</p>
+              )}
+            </div>
+            <div className="flex gap-1 text-[9px] font-medium">
+              {[
+                { label: 'N', value: s.novelty_score, color: '#a78bfa' },
+                { label: 'C', value: s.growth_score, color: '#34d399' },
+                { label: 'S', value: s.cross_source_score, color: '#fbbf24' },
+                { label: 'F', value: s.frequency_score, color: '#60a5fa' },
+              ].map(m => (
+                <span key={m.label} className="w-5 h-5 rounded flex items-center justify-center"
+                  style={{ background: `${m.color}20`, color: m.color }}>
+                  {m.label}{Math.round(m.value * 10)}
+                </span>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ─── Trends widget ─── */
+function TrendsWidget({ trends }: { trends: any }) {
+  const hasData = trends?.trendingUp?.length || trends?.emerging?.length;
+
+  const renderList = (items: any[], label: string, colorUp: boolean) => {
+    if (!items?.length) return null;
+    return (
+      <div>
+        <p className="text-[10px] font-bold uppercase tracking-widest mb-2" style={{ color: '#6b7280' }}>{label}</p>
+        <div className="space-y-1.5">
+          {items.slice(0, 5).map((t: any, i: number) => (
+            <div key={i} className="flex items-center justify-between px-3 py-2 rounded-lg"
+              style={{ background: '#1e2535' }}>
+              <span className="text-xs font-medium text-white truncate">{t.name}</span>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className={`text-[10px] font-bold ${colorUp ? 'text-emerald-400' : 'text-red-400'}`}>
+                  {colorUp ? '▲' : '▼'} {Math.abs(t.variationPercent)}%
+                </span>
+                <span className="text-[9px]" style={{ color: '#6b7280' }}>{t.currentFreq}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  if (!hasData) return (
+    <div>
+      <p className="text-xs" style={{ color: '#6b7280' }}>Aucune tendance détectée sur la période récente.</p>
+    </div>
+  );
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+      {renderList(trends.trendingUp, 'Tendances à la hausse', true)}
+      {renderList(trends.emerging, 'Sujets émergents', true)}
+      {renderList(trends.trendingDown, 'Tendances à la baisse', false)}
+    </div>
+  );
+}
+
+/* ─── Insights Feed widget ─── */
+function InsightsFeedWidget({ insights, anomalies }: { insights: any[]; anomalies: any[] }) {
+  const TYPE_CFG: Record<string, { label: string; color: string }> = {
+    TREND: { label: 'Tendance', color: '#3b82f6' },
+    ANOMALY: { label: 'Anomalie', color: '#ef4444' },
+    COMPETITOR: { label: 'Concurrentiel', color: '#f59e0b' },
+    HYPOTHESIS: { label: 'Hypothèse', color: '#a78bfa' },
+    WEAK_SIGNAL: { label: 'Signal faible', color: '#22d3ee' },
+  };
+
+  const allItems = [
+    ...anomalies.map((a: any, i: number) => ({
+      id: `anomaly-${i}`,
+      type: 'ANOMALY',
+      title: a.title,
+      description: a.description,
+      confidence: a.severity === 'HIGH' ? 0.9 : 0.6,
+      severity: a.severity,
+      created_at: a.date,
+      is_read: false,
+    })),
+    ...insights,
+  ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+  if (allItems.length === 0) return (
+    <div className="rounded-2xl p-6" style={{ background: '#161b27', border: '1px solid #1e2535' }}>
+      <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: '#6b7280' }}>Flux d'insights</p>
+      <p className="text-xs" style={{ color: '#6b7280' }}>Aucun insight pour le moment.</p>
+    </div>
+  );
+
+  return (
+    <div className="rounded-2xl p-6" style={{ background: '#161b27', border: '1px solid #1e2535' }}>
+      <p className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: '#6b7280' }}>
+        Flux d'insights ({allItems.length})
+      </p>
+      <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1">
+        {allItems.slice(0, 20).map((item: any) => {
+          const cfg = TYPE_CFG[item.type] || { label: item.type, color: '#6b7280' };
+          return (
+            <div key={item.id} className="rounded-xl p-3 transition hover:opacity-90"
+              style={{ background: '#1e2535', border: '1px solid #2d3748' }}>
+              <div className="flex items-start gap-3">
+                <span className="text-[9px] font-bold px-2 py-0.5 rounded shrink-0 mt-0.5"
+                  style={{ background: `${cfg.color}20`, color: cfg.color }}>
+                  {cfg.label}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-white">{item.title}</p>
+                  <p className="text-[10px] mt-1 leading-relaxed" style={{ color: '#9ca3af' }}>
+                    {item.description}
+                  </p>
+                  <div className="flex items-center gap-3 mt-1.5">
+                    <span className="text-[9px] font-medium" style={{ color: '#6b7280' }}>
+                      Confiance: {Math.round((item.confidence || 0) * 100)}%
+                    </span>
+                    <span className="text-[9px]" style={{ color: '#4b5568' }}>
+                      {new Date(item.created_at).toLocaleDateString('fr-FR')}
+                    </span>
+                    {item.severity && (
+                      <span className={`text-[9px] font-bold ${
+                        item.severity === 'HIGH' ? 'text-red-400' : item.severity === 'MEDIUM' ? 'text-yellow-400' : 'text-blue-400'
+                      }`}>
+                        {item.severity}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

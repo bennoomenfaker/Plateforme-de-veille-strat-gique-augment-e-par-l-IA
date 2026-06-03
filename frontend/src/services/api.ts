@@ -263,6 +263,9 @@ export const aiEnrichmentService = {
       hypothesis_id: hypothesisId,
     }),
 
+  enrichProjectForce: (projectId: string) =>
+    api.post(`/projects/${projectId}/enrich?force=true`),
+
   enrichByPlan: (planId: string) =>
     api.post(`/collection-plans/${planId}/enrich`),
 
@@ -300,12 +303,20 @@ export const aiEnrichmentService = {
 
   getByProcessedItem: (processedItemId: string) =>
     api.get(`/processed-items/${processedItemId}/enriched`),
+
+  getJobById: (jobId: string) =>
+    api.get(`/enrichment-jobs/${jobId}`),
+
+  cancelJob: (jobId: string) =>
+    api.patch(`/enrichment-jobs/${jobId}/cancel`),
 };
 
 // --- 12. ALERTS ---
 export const alertsService = {
   getMyAlerts: () => api.get('/alertes'),
+  getUnreadCount: () => api.get('/alertes/unread'),
   markAsRead: (id: string) => api.patch(`/alertes/${id}/read`),
+  markAllAsRead: () => api.patch('/alertes/read-all'),
 };
 
 // --- 12b. ANALYSE (Sprint 7) ---
@@ -374,7 +385,24 @@ export const reportsService = {
   },
 };
 
-// --- 15. FOLDERS ---
+// --- 15b. INSIGHT ENGINE ---
+export const insightService = {
+  generate: (projectId: string) => api.post(`/insight-engine/generate/${projectId}`),
+  getInsights: (projectId: string, type?: string, limit = 50) =>
+    api.get(`/insight-engine/insights/${projectId}`, { params: { type, limit } }),
+  getInsightStats: (projectId: string) =>
+    api.get(`/insight-engine/insights/${projectId}/stats`),
+  markInsightRead: (id: string) => api.patch(`/insight-engine/insights/${id}/read`),
+  dismissInsight: (id: string) => api.patch(`/insight-engine/insights/${id}/dismiss`),
+  detectTrends: (projectId: string) => api.post(`/insight-engine/trends/detect/${projectId}`),
+  getTrendHistory: (projectId: string, days = 90) =>
+    api.get(`/insight-engine/trends/${projectId}`, { params: { days } }),
+  detectWeakSignals: (projectId: string) => api.post(`/insight-engine/weak-signals/detect/${projectId}`),
+  getWeakSignals: (projectId: string) => api.get(`/insight-engine/weak-signals/${projectId}`),
+  detectAnomalies: (projectId: string) => api.post(`/insight-engine/anomalies/detect/${projectId}`),
+};
+
+// --- 16. FOLDERS ---
 export const foldersService = {
   getAll: () => api.get('/folders'),
   create: (data: any) => api.post('/folders', data),

@@ -66,7 +66,7 @@ export class AlertesController {
   }
 
   // PATCH /alertes/read-all → tout marquer comme lu
-  @Patch('read-all/all')
+  @Patch('read-all')
   async markAllAsRead(@Request() req: any) {
     return this.alertesService.markAllAsRead(req.user.userId);
   }

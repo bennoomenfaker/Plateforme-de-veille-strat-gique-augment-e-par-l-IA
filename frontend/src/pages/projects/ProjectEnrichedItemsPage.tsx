@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Layout from '../../components/layout/Layout';
@@ -212,6 +212,10 @@ export default function ProjectEnrichedItemsPage() {
   const [notification, setNotification] = useState<{type:'success'|'error'; msg:string}|null>(null);
   const [impactFilter, setImpact] = useState('');
   const [selectedItem, setSelected] = useState<EnrichedItem | null>(null);
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const [jobProgress, setJobProgress] = useState<{ processed: number; total: number; skipped: number; failed: number } | null>(null);
+  const [pollTrigger, setPollTrigger] = useState(0);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const LIMIT = 20;
 
   // ── Queries ────────────────────────────────────────────────────────────────
@@ -237,17 +241,25 @@ export default function ProjectEnrichedItemsPage() {
     enabled: !!projectId,
   });
 
-  // ── Mutation ───────────────────────────────────────────────────────────────
+  // ── Mutation asynchrone → polling ──────────────────────────────────────────
 
   const enrichMut = useMutation({
     mutationFn: () => aiEnrichmentService.enrichProject(projectId!),
+    onMutate: () => {
+      setJobProgress({ processed: 0, total: 1, skipped: 0, failed: 0 });
+      setPollTrigger(t => t + 1);
+    },
     onSuccess: async (res) => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['enriched-items',    projectId] }),
-        queryClient.invalidateQueries({ queryKey: ['ai-stats',          projectId] }),
-      ]);
       const d = res.data;
-      alert(`Enrichissement terminé !\n${d.processed ?? 0} traités · ${d.skipped ?? 0} ignorés · ${d.failed ?? 0} erreurs`);
+      await queryClient.invalidateQueries({ queryKey: ['enriched-items', projectId] });
+      await queryClient.invalidateQueries({ queryKey: ['ai-stats', projectId] });
+      if (!activeJobId) {
+        setNotification({
+          type: 'success',
+          msg: `Enrichissement terminé : ${d.processed ?? 0} traités · ${d.skipped ?? 0} ignorés · ${d.failed ?? 0} erreurs`,
+        });
+        setTimeout(() => setNotification(null), 8000);
+      }
     },
     onError: (err: any) => {
       setNotification({type:'error', msg:`Erreur : ${err?.response?.data?.message || err.message}`});
@@ -255,10 +267,59 @@ export default function ProjectEnrichedItemsPage() {
     },
   });
 
+  // Poll le dernier job RUNNING au montage + quand on clique "Lancer"
+  const stopPolling = useCallback(() => {
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+    setActiveJobId(null);
+    setJobProgress(null);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const res = await aiEnrichmentService.getJobs(projectId!, 1);
+        const lastJob = res.data?.[0];
+        if (!lastJob || lastJob.status !== 'RUNNING' || cancelled) return;
+        setActiveJobId(lastJob.id);
+        setJobProgress({ processed: lastJob.processed ?? 0, total: lastJob.total ?? 0, skipped: lastJob.skipped ?? 0, failed: lastJob.failed ?? 0 });
+        pollRef.current = setInterval(async () => {
+          if (cancelled) { if (pollRef.current) clearInterval(pollRef.current); return; }
+          try {
+            const r2 = await aiEnrichmentService.getJobById(lastJob.id);
+            const j = r2.data;
+            if (!j) { if (pollRef.current) clearInterval(pollRef.current); stopPolling(); return; }
+            setJobProgress({ processed: j.processed ?? 0, total: j.total ?? 0, skipped: j.skipped ?? 0, failed: j.failed ?? 0 });
+            if (j.status === 'DONE' || j.status === 'FAILED' || j.status === 'CANCELLED') {
+              if (pollRef.current) clearInterval(pollRef.current);
+              stopPolling();
+              await queryClient.invalidateQueries({ queryKey: ['enriched-items', projectId] });
+              await queryClient.invalidateQueries({ queryKey: ['ai-stats', projectId] });
+              setNotification({
+                type: j.status === 'CANCELLED' ? 'success' : j.status === 'DONE' ? 'success' : 'error',
+                msg: j.status === 'CANCELLED'
+                  ? 'Enrichissement annulé'
+                  : j.status === 'DONE'
+                    ? `Enrichissement terminé : ${j.processed} traités · ${j.skipped} ignorés · ${j.failed} erreurs`
+                    : "L'enrichissement a échoué",
+              });
+              setTimeout(() => setNotification(null), 8000);
+            }
+          } catch {
+            if (pollRef.current) clearInterval(pollRef.current);
+            stopPolling();
+          }
+        }, 3000);
+      } catch { /* */ }
+    };
+    poll();
+    return () => { cancelled = true; if (pollRef.current) clearInterval(pollRef.current); };
+  }, [projectId, queryClient, stopPolling, pollTrigger]);
+
   // ── Données ────────────────────────────────────────────────────────────────
 
   const items: EnrichedItem[] = data?.data ?? [];
-  const isRunning = enrichMut.isPending;
+  const isRunning = enrichMut.isPending || !!activeJobId;
 
   const cardStyle: React.CSSProperties = {
     background: '#161b27', border: '1px solid #1e2535', borderRadius: '1rem',
@@ -326,10 +387,74 @@ export default function ProjectEnrichedItemsPage() {
                 color:  isRunning ? '#6b7280' : 'white',
                 cursor: isRunning ? 'not-allowed' : 'pointer',
               }}>
-              {isRunning ? 'Analyse en cours...' : '🧠 Lancer l\'enrichissement IA'}
+              {isRunning ? 'En cours...' : '🧠 Lancer l\'enrichissement IA'}
+            </button>
+            <button
+              onClick={() => {
+                if (confirm('Ré-enrichir tous les articles ? Cela va supprimer les enrichissements existants et tout relancer.')) {
+                  setPollTrigger(t => t + 1);
+                  setJobProgress({ processed: 0, total: 1, skipped: 0, failed: 0 });
+                  aiEnrichmentService.enrichProjectForce(projectId!).then(() => {
+                    queryClient.invalidateQueries({ queryKey: ['enriched-items', projectId] });
+                    queryClient.invalidateQueries({ queryKey: ['ai-stats', projectId] });
+                  });
+                }
+              }}
+              disabled={isRunning}
+              className="text-sm px-3 py-2 rounded-xl transition"
+              style={{
+                background: isRunning ? '#1e2535' : '#450a0a',
+                color: isRunning ? '#6b7280' : '#f87171',
+                border: '1px solid #7f1d1d',
+                cursor: isRunning ? 'not-allowed' : 'pointer',
+              }}>
+              ↻ Ré-enrichir tout
             </button>
           </div>
         </div>
+
+        {/* Progress bar */}
+        {isRunning && jobProgress && jobProgress.total > 0 && (
+          <div className="mb-6 rounded-2xl p-5" style={{ background: '#161b27', border: '1px solid #1e2535' }}>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold" style={{ color: '#a78bfa' }}>
+                Enrichissement IA en cours...
+              </p>
+              <span className="text-xs font-bold" style={{ color: '#9ca3af' }}>
+                {Math.round((jobProgress.processed / jobProgress.total) * 100)}%
+              </span>
+            </div>
+            <div className="h-3 rounded-full overflow-hidden" style={{ background: '#1e2535' }}>
+              <div className="h-full rounded-full transition-all duration-500"
+                style={{
+                  width: `${Math.round((jobProgress.processed / jobProgress.total) * 100)}%`,
+                  background: 'linear-gradient(90deg, #7c3aed, #a78bfa)',
+                }} />
+            </div>
+            <div className="flex items-center justify-between mt-2">
+              <div className="flex gap-4 text-[10px]" style={{ color: '#6b7280' }}>
+                <span>{jobProgress.processed} traités</span>
+                <span>{jobProgress.skipped} ignorés</span>
+                <span>{jobProgress.failed} erreurs</span>
+                <span>{jobProgress.total} total</span>
+              </div>
+              <button
+                onClick={async () => {
+                  if (!activeJobId) return;
+                  try {
+                    await aiEnrichmentService.cancelJob(activeJobId);
+                    stopPolling();
+                    setNotification({ type: 'success', msg: 'Enrichissement arrêté' });
+                    setTimeout(() => setNotification(null), 5000);
+                  } catch { /* */ }
+                }}
+                className="text-xs px-3 py-1.5 rounded-lg transition"
+                style={{ background: '#450a0a', color: '#f87171', border: '1px solid #7f1d1d' }}>
+                ✕ Stop
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
@@ -423,13 +548,37 @@ export default function ProjectEnrichedItemsPage() {
                 {!impactFilter && 'Lancez l\'enrichissement pour analyser vos données nettoyées'}
               </p>
               {!impactFilter && (
-                <button
-                  onClick={() => enrichMut.mutate()}
-                  disabled={isRunning}
-                  className="text-sm font-semibold px-5 py-2 rounded-xl text-white"
-                  style={{ background: 'linear-gradient(135deg,#7c3aed,#a78bfa)' }}>
-                  Lancer l'enrichissement IA
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => enrichMut.mutate()}
+                    disabled={isRunning}
+                    className="text-sm font-semibold px-5 py-2 rounded-xl text-white"
+                    style={{ background: 'linear-gradient(135deg,#7c3aed,#a78bfa)' }}>
+                    Lancer l'enrichissement IA
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (confirm('Ré-enrichir tous les articles ? Cela va supprimer les enrichissements existants et tout relancer.')) {
+                        setPollTrigger(t => t + 1);
+                        aiEnrichmentService.enrichProjectForce(projectId!).then(() => {
+                          queryClient.invalidateQueries({ queryKey: ['enriched-items', projectId] });
+                          queryClient.invalidateQueries({ queryKey: ['ai-stats', projectId] });
+                          setNotification({ type: 'success', msg: 'Ré-enrichissement terminé !' });
+                          setTimeout(() => setNotification(null), 5000);
+                        });
+                      }
+                    }}
+                    disabled={isRunning}
+                    className="text-sm px-4 py-2 rounded-xl transition"
+                    style={{
+                      background: isRunning ? '#1e2535' : '#450a0a',
+                      color: isRunning ? '#6b7280' : '#f87171',
+                      border: '1px solid #7f1d1d',
+                      cursor: isRunning ? 'not-allowed' : 'pointer',
+                    }}>
+                    ↻ Ré-enrichir tout
+                  </button>
+                </div>
               )}
             </div>
           ) : (

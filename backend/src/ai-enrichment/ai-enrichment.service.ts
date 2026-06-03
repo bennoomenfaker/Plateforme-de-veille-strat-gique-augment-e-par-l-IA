@@ -12,90 +12,104 @@ export class AiEnrichmentService {
     private llm: LlmProviderService,
   ) {}
 
-  async enrichProject(projectId: string): Promise<any> {
-    const job = await this.prisma.aiEnrichmentJob.create({
-      data: {
-        project_id: projectId,
-        status: 'RUNNING',
-        started_at: new Date(),
-      },
-    });
+  async enrichProject(projectId: string, force = false): Promise<any> {
+    if (force) {
+      await this.prisma.enrichedItem.deleteMany({
+        where: { project_id: projectId },
+      });
+    }
 
     const items = await this.prisma.processedItem.findMany({
       where: { project_id: projectId },
       include: { raw_item: { select: { collection_plan_id: true } } },
     });
 
+    const job = await this.prisma.aiEnrichmentJob.create({
+      data: {
+        project_id: projectId,
+        status: 'RUNNING',
+        started_at: new Date(),
+        total: items.length,
+      },
+    });
+
     let processed = 0,
       skipped = 0,
       failed = 0;
 
+    const updateJob = () =>
+      this.prisma.aiEnrichmentJob.update({
+        where: { id: job.id },
+        data: { processed, skipped, failed },
+      });
+
     // Traitement par lots de 5 pour éviter le timeout
     const BATCH_SIZE = 5;
-    for (let i = 0; i < items.length; i += BATCH_SIZE) {
-      const batch = items.slice(i, i + BATCH_SIZE);
-      for (const item of batch) {
-        try {
-          const existing = await this.prisma.enrichedItem.findUnique({
-            where: { processed_item_id: item.id },
-          });
-          if (existing) {
-            skipped++;
-            continue;
-          }
+      for (let i = 0; i < items.length; i += BATCH_SIZE) {
+        const batch = items.slice(i, i + BATCH_SIZE);
+        for (const item of batch) {
+          try {
+            if (!force) {
+              const existing = await this.prisma.enrichedItem.findUnique({
+                where: { processed_item_id: item.id },
+              });
+              if (existing) {
+                skipped++;
+                continue;
+              }
+            }
 
-          const planId =
-            item.raw_item?.collection_plan_id || item.collection_plan_id;
-          let question = 'Quelle est la pertinence de cet article ?';
-          let hypothesis = '';
-          let perimeters: string[] = [];
+            const planId =
+              item.raw_item?.collection_plan_id || item.collection_plan_id;
+            let question = 'Quelle est la pertinence de cet article ?';
+            let hypothesis = '';
+            let perimeters: string[] = [];
 
-          if (planId) {
-            const plan = await this.prisma.collectionPlan.findUnique({
-              where: { id: planId },
-              include: {
-                hypothesis: {
-                  include: {
-                    axis: {
-                      include: {
-                        objective: {
-                          include: {
-                            project: { include: { perimeters: true } },
+            if (planId) {
+              const plan = await this.prisma.collectionPlan.findUnique({
+                where: { id: planId },
+                include: {
+                  hypothesis: {
+                    include: {
+                      axis: {
+                        include: {
+                          objective: {
+                            include: {
+                              project: { include: { perimeters: true } },
+                            },
                           },
                         },
                       },
                     },
                   },
                 },
-              },
-            });
-            if (plan) {
-              question = plan.question;
-              hypothesis = plan.hypothesis?.content || '';
-              perimeters =
-                plan.hypothesis?.axis?.objective?.project?.perimeters
-                  ?.map((p) => p.name || '')
-                  .filter(Boolean) || [];
+              });
+              if (plan) {
+                question = plan.question;
+                hypothesis = plan.hypothesis?.content || '';
+                perimeters =
+                  plan.hypothesis?.axis?.objective?.project?.perimeters
+                    ?.map((p) => p.name || '')
+                    .filter(Boolean) || [];
+              }
             }
-          }
 
-          const prompt = buildEnrichmentPrompt({
-            question,
-            hypothesis,
-            perimeters,
-            content: item.content_clean || item.content_excerpt || '',
-            title: item.title || '',
-          });
+            const prompt = buildEnrichmentPrompt({
+              question,
+              hypothesis,
+              perimeters,
+              content: item.content_clean || item.content_excerpt || '',
+              title: item.title || '',
+            });
 
-          const raw = await this.llm.generate(prompt);
-          const parsed = this.llm.parseJsonResponse(raw);
-          if (!parsed) {
-            failed++;
-            continue;
-          }
+            const raw = await this.llm.generate(prompt);
+            const parsed = this.llm.parseJsonResponse(raw);
+            if (!parsed) {
+              failed++;
+              continue;
+            }
 
-          await this.prisma.enrichedItem.create({
-            data: {
+            const data = {
               processed_item_id: item.id,
               project_id: projectId,
               collection_plan_id: planId || null,
@@ -116,8 +130,13 @@ export class AiEnrichmentService {
               raw_response: parsed,
               model_used: this.llm.primaryModel,
               prompt_version: '1.0',
-            },
-          });
+            };
+
+            await this.prisma.enrichedItem.upsert({
+              where: { processed_item_id: item.id },
+              create: data,
+              update: data,
+            });
 
           if (planId) {
             const plan = await this.prisma.collectionPlan.findUnique({
@@ -143,6 +162,7 @@ export class AiEnrichmentService {
       this.logger.log(
         `Batch ${Math.floor(i / BATCH_SIZE) + 1} terminé — ${processed} traités`,
       );
+      await updateJob();
     }
 
     await this.prisma.aiEnrichmentJob.update({
@@ -150,12 +170,13 @@ export class AiEnrichmentService {
       data: {
         status: 'DONE',
         finished_at: new Date(),
-        total: items.length,
         processed,
         skipped,
         failed,
       },
     });
+
+    this.logger.log(`Job ${job.id} terminé — ${processed} enrichis, ${skipped} ignorés, ${failed} erreurs`);
 
     return { job_id: job.id, total: items.length, processed, skipped, failed };
   }
@@ -211,23 +232,28 @@ export class AiEnrichmentService {
           continue;
         }
 
-        await this.prisma.enrichedItem.create({
-          data: {
-            processed_item_id: item.id,
-            project_id: item.project_id,
-            collection_plan_id: planId,
-            answer: parsed.answer || null,
-            summary: parsed.summary || null,
-            entities: parsed.entities || [],
-            topics: parsed.topics || [],
-            sentiment: parsed.sentiment || 'NEUTRE',
-            relevance_score: parsed.relevance_score || null,
-            hypothesis_impact: parsed.hypothesis_impact || 'OPEN',
-            confidence_score: parsed.confidence_score || null,
-            raw_response: parsed,
-            model_used: this.llm.primaryModel,
-            prompt_version: '1.0',
-          },
+        const data = {
+          processed_item_id: item.id,
+          project_id: item.project_id,
+          collection_plan_id: planId,
+          answer: parsed.answer || null,
+          summary: parsed.summary || null,
+          entities: parsed.entities || [],
+          topics: parsed.topics || [],
+          sentiment: parsed.sentiment || 'NEUTRE',
+          relevance_score: parsed.relevance_score || null,
+          hypothesis_impact: parsed.hypothesis_impact || 'OPEN',
+          confidence_score: parsed.confidence_score || null,
+          raw_response: parsed,
+          model_used: this.llm.primaryModel,
+          prompt_version: '1.0',
+        };
+
+        await this.prisma.enrichedItem.upsert({
+          where: { processed_item_id: item.id },
+          create: data,
+          update: data,
+        });
         });
 
         if (plan.hypothesis_id) {
@@ -325,6 +351,21 @@ export class AiEnrichmentService {
       where: { project_id: projectId },
       orderBy: { created_at: 'desc' },
       take: limit,
+    });
+  }
+
+  async getJobById(jobId: string) {
+    return this.prisma.aiEnrichmentJob.findUnique({
+      where: { id: jobId },
+    });
+  }
+
+  async cancelJob(jobId: string) {
+    const job = await this.prisma.aiEnrichmentJob.findUnique({ where: { id: jobId } });
+    if (!job) throw new Error('Job introuvable');
+    return this.prisma.aiEnrichmentJob.update({
+      where: { id: jobId },
+      data: { status: 'CANCELLED', finished_at: new Date() },
     });
   }
 

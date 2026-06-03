@@ -20,7 +20,7 @@ export default function AlertesPage() {
   });
 
   const markAllMutation = useMutation({
-    mutationFn: () => import('../../services/api').then(m => m.default.patch('/alertes/read-all/all')),
+    mutationFn: () => alertsService.markAllAsRead(),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['my-alerts'] });
       queryClient.invalidateQueries({ queryKey: ['alerts-unread'] });
