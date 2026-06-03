@@ -45,6 +45,40 @@ export class MailService {
     await this.send(to, subject, html);
   }
 
+  async sendAlertEmail(
+    to: string,
+    projectName: string,
+    score: number,
+  ): Promise<void> {
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    const subject = `🚨 Alerte critique - Score élevé (${score}%) sur "${projectName}"`;
+    const html = `
+      <div style="max-width:600px;margin:0 auto;font-family:system-ui,sans-serif;background:#0f1117;color:#e2e8f0;border-radius:12px;overflow:hidden;">
+        <div style="background:linear-gradient(135deg,#ef4444,#dc2626);padding:32px;text-align:center;">
+          <h1 style="margin:0;font-size:24px;color:#fff;">🚨 Alerte Critique</h1>
+          <p style="margin:8px 0 0;color:#fecaca;font-size:14px;">VeilleAI - Détection de score élevé</p>
+        </div>
+        <div style="padding:32px;">
+          <h2 style="font-size:20px;margin:0 0 16px;">Un élément pertinent a été détecté</h2>
+          <p style="font-size:14px;line-height:1.6;color:#94a3b8;">
+            Un article récent avec un score de pertinence de <strong style="color:#fbbf24;font-size:18px;">${score}%</strong>
+            a été trouvé dans le projet <strong style="color:#e2e8f0;">"${projectName}"</strong>.
+          </p>
+          <div style="text-align:center;margin:28px 0;">
+            <a href="${frontendUrl}/projects" style="display:inline-block;padding:12px 32px;background:linear-gradient(135deg,#3b82f6,#6366f1);color:#fff;text-decoration:none;border-radius:8px;font-weight:600;font-size:14px;">Voir le projet</a>
+          </div>
+          <div style="margin-top:24px;padding:16px;background:#1e293b;border-radius:8px;font-size:13px;color:#94a3b8;">
+            <p style="margin:0;">Connectez-vous à VeilleAI pour consulter les détails et analyser les résultats.</p>
+          </div>
+        </div>
+        <div style="padding:16px 32px;text-align:center;border-top:1px solid #1e293b;font-size:12px;color:#475569;">
+          &copy; ${new Date().getFullYear()} VeilleAI. Tous droits réservés.
+        </div>
+      </div>
+    `;
+    await this.send(to, subject, html);
+  }
+
   async sendPasswordResetEmail(to: string, token: string): Promise<void> {
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
     const resetLink = `${frontendUrl}/reset-password/${token}`;

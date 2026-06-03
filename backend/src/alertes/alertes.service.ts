@@ -1,12 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
+import { MailService } from '../auth-mail/mail.service';
 
 @Injectable()
 export class AlertesService {
   private readonly logger = new Logger(AlertesService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private mailService: MailService,
+  ) {}
 
   @Cron(CronExpression.EVERY_HOUR)
   async handleScheduledAlerts() {
@@ -77,6 +81,20 @@ export class AlertesService {
             },
           });
           created++;
+
+          // Envoi email pour alerte critique
+          try {
+            const user = await this.prisma.user.findUnique({
+              where: { id: userId },
+              select: { email: true },
+            });
+            if (user?.email) {
+              const score = Math.round((item.relevance_score ?? 0) * 100);
+              await this.mailService.sendAlertEmail(user.email, project.nom, score);
+            }
+          } catch (err) {
+            this.logger.error(`Échec envoi email alerte critique: ${err instanceof Error ? err.message : String(err)}`);
+          }
         }
       }
 
