@@ -335,7 +335,7 @@ export default function ProjectDetailPage() {
                   const url = URL.createObjectURL(new Blob([res.data], { type: 'text/csv;charset=utf-8;' }));
                   const a = document.createElement('a');
                   a.href = url;
-                  a.download = `export-${id.slice(0, 8)}.csv`;
+                  a.download = `export-${(id ?? '').slice(0, 8)}.csv`;
                   document.body.appendChild(a);
                   a.click();
                   a.remove();
