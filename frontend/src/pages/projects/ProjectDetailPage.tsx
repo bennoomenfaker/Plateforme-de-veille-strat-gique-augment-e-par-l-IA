@@ -38,6 +38,20 @@ export default function ProjectDetailPage() {
   const [expandedHypotheses, setExpandedHypotheses] = useState<Record<string, boolean>>({});
   const [editingItem, setEditingItem] = useState<{ type: 'objective' | 'axis' | 'hypothesis'; id: string; parentId: string; value: string } | null>(null);
   const [editValue, setEditValue] = useState('');
+  const [editAxisDescription, setEditAxisDescription] = useState('');
+
+  const [showNewObjective, setShowNewObjective] = useState(false);
+  const [newObjectiveContent, setNewObjectiveContent] = useState('');
+  const [newAxisObjectiveId, setNewAxisObjectiveId] = useState<string | null>(null);
+  const [newAxisName, setNewAxisName] = useState('');
+  const [newAxisDescription, setNewAxisDescription] = useState('');
+
+  const [newHypothesisAxisId, setNewHypothesisAxisId] = useState<string | null>(null);
+  const [newHypothesisContent, setNewHypothesisContent] = useState('');
+
+  const [newPlanHypothesisId, setNewPlanHypothesisId] = useState<string | null>(null);
+  const [newPlanQuestion, setNewPlanQuestion] = useState('');
+  const [newPlanFrequency, setNewPlanFrequency] = useState('ON_DEMAND');
 
   const [showEditModal, setShowEditModal] = useState(false);
   const [editForm, setEditForm] = useState({
@@ -110,6 +124,46 @@ export default function ProjectDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['project', id] });
       setEditingItem(null);
+    },
+  });
+
+  const createObjectiveMutation = useMutation({
+    mutationFn: (content: string) => objectiveService.create(id!, { content }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project', id] });
+      setNewObjectiveContent('');
+      setShowNewObjective(false);
+    },
+  });
+
+  const createAxisMutation = useMutation({
+    mutationFn: ({ objectiveId, data }: { objectiveId: string; data: any }) =>
+      axisService.create(objectiveId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project', id] });
+      setNewAxisObjectiveId(null);
+      setNewAxisName('');
+      setNewAxisDescription('');
+    },
+  });
+
+  const createHypothesisMutation = useMutation({
+    mutationFn: ({ axisId, data }: { axisId: string; data: any }) =>
+      hypothesisService.create(axisId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project', id] });
+      setNewHypothesisAxisId(null);
+      setNewHypothesisContent('');
+    },
+  });
+
+  const createPlanMutation = useMutation({
+    mutationFn: ({ hypothesisId, data }: { hypothesisId: string; data: any }) =>
+      api.post(`/hypotheses/${hypothesisId}/collection-plans`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project', id] });
+      setNewPlanHypothesisId(null);
+      setNewPlanQuestion('');
     },
   });
 
@@ -765,12 +819,23 @@ export default function ProjectDetailPage() {
                               Axe
                             </span>
                             {editingItem?.id === axe.id && editingItem?.type === 'axis' ? (
-                              <input value={editValue} onChange={e => setEditValue(e.target.value)}
-                                onClick={e => e.stopPropagation()}
-                                className="flex-1 text-sm font-medium bg-transparent border rounded-lg px-2 py-1 text-white outline-none"
-                                style={{ borderColor: '#6366f1' }} autoFocus />
+                              <div className="flex-1 space-y-1.5 min-w-0">
+                                <input value={editValue} onChange={e => setEditValue(e.target.value)}
+                                  onClick={e => e.stopPropagation()}
+                                  className="w-full text-sm font-medium bg-transparent border rounded-lg px-2 py-1 text-white outline-none"
+                                  style={{ borderColor: '#6366f1' }} autoFocus placeholder="Nom de l'axe" />
+                                <textarea value={editAxisDescription} onChange={e => setEditAxisDescription(e.target.value)}
+                                  onClick={e => e.stopPropagation()}
+                                  className="w-full text-xs bg-transparent border rounded-lg px-2 py-1 text-white outline-none"
+                                  style={{ borderColor: '#6366f1', resize: 'none' }} rows={2} placeholder="Description (optionnelle)" />
+                              </div>
                             ) : (
-                              <p className="text-sm font-medium text-white truncate">{axe.name}</p>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-white truncate">{axe.name}</p>
+                                {axe.description && (
+                                  <p className="text-xs truncate mt-0.5" style={{ color: '#9ca3af' }}>{axe.description}</p>
+                                )}
+                              </div>
                             )}
                           </div>
                           <div className="flex items-center gap-1 shrink-0 ml-3">
@@ -782,7 +847,7 @@ export default function ProjectDetailPage() {
                             )}
                             {canCreateOrModify && editingItem?.id === axe.id && editingItem?.type === 'axis' ? (
                               <>
-                                <button onClick={e => { e.stopPropagation(); updateAxisMutation.mutate({ objectiveId: obj.id, axisId: axe.id, data: { name: editValue } }); }}
+                                <button onClick={e => { e.stopPropagation(); updateAxisMutation.mutate({ objectiveId: obj.id, axisId: axe.id, data: { name: editValue, description: editAxisDescription } }); }}
                                   className="hover:text-green-400 transition-colors" style={actionBtnStyle}>
                                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -796,7 +861,7 @@ export default function ProjectDetailPage() {
                                 </button>
                               </>
                             ) : canCreateOrModify && (
-                              <button onClick={e => { e.stopPropagation(); setEditingItem({ type: 'axis', id: axe.id, parentId: obj.id, value: axe.name }); setEditValue(axe.name); }}
+                              <button onClick={e => { e.stopPropagation(); setEditingItem({ type: 'axis', id: axe.id, parentId: obj.id, value: axe.name }); setEditValue(axe.name); setEditAxisDescription(axe.description || ''); }}
                                 className="hover:text-blue-400 transition-colors" style={actionBtnStyle}>
                                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -820,6 +885,11 @@ export default function ProjectDetailPage() {
 
                         {/* ── Axe body (expandable) ── */}
                         <div className={`transition-all duration-200 overflow-hidden ${axeOpen ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'}`}>
+                          {axe.description && (
+                            <div className="px-5 py-2" style={{ marginLeft: '12px' }}>
+                              <p className="text-xs italic" style={{ color: '#9ca3af' }}>{axe.description}</p>
+                            </div>
+                          )}
                           {axe.hypotheses?.length === 0 && (
                             <div className="pl-6 py-2.5 text-center">
                               <p className="text-xs" style={{ color: '#4b5568' }}>Aucune hypothèse</p>
@@ -929,15 +999,154 @@ export default function ProjectDetailPage() {
                                     </div>
                                   )})}
                                 </div>
-                              </div>
+
+                              {/* ── Add collection plan ── */}
+                              {canCreateOrModify && (
+                                <div className="pl-8 pr-3 pb-2.5">
+                                  {newPlanHypothesisId === hyp.id ? (
+                                    <div className="space-y-1.5">
+                                      <input value={newPlanQuestion} onChange={e => setNewPlanQuestion(e.target.value)}
+                                        placeholder="Question / objectif du plan..."
+                                        style={inputStyle}
+                                        onKeyDown={e => { if (e.key === 'Enter' && newPlanQuestion.trim()) createPlanMutation.mutate({ hypothesisId: hyp.id, data: { question: newPlanQuestion.trim(), frequency: newPlanFrequency } }); }}
+                                      />
+                                      <select value={newPlanFrequency} onChange={e => setNewPlanFrequency(e.target.value)}
+                                        style={inputStyle}>
+                                        <option value="ON_DEMAND">À la demande</option>
+                                        <option value="DAILY">Quotidien</option>
+                                        <option value="WEEKLY">Hebdomadaire</option>
+                                        <option value="MONTHLY">Mensuel</option>
+                                      </select>
+                                      <div className="flex gap-2">
+                                        <button onClick={() => { if (newPlanQuestion.trim()) createPlanMutation.mutate({ hypothesisId: hyp.id, data: { question: newPlanQuestion.trim(), frequency: newPlanFrequency } }); }}
+                                          className="px-3 py-1.5 rounded-xl text-xs font-bold text-white"
+                                          style={{ background: 'linear-gradient(135deg,#6366f1,#4f46e5)' }}>
+                                          Ajouter
+                                        </button>
+                                        <button onClick={() => { setNewPlanHypothesisId(null); setNewPlanQuestion(''); }}
+                                          className="px-3 py-1.5 rounded-xl text-xs" style={{ border: '1px solid #1e2535', color: '#9ca3af' }}>
+                                          Annuler
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <button onClick={() => setNewPlanHypothesisId(hyp.id)}
+                                      className="text-[11px] font-semibold w-full py-1.5 rounded-lg transition"
+                                      style={{ border: '1px dashed #1e2535', color: '#a5b4fc' }}>
+                                      + Ajouter un plan de collecte
+                                    </button>
+                                  )}
+                                </div>
+                              )}
                             </div>
-                          )})}
-                        </div>
+                          </div>
+                        )})}
+
+                        {/* ── Add hypothesis ── */}
+                        {canCreateOrModify && (
+                          <div className="px-5 py-3" style={{ borderTop: '1px solid #1e2535', marginLeft: '12px' }}>
+                            {newHypothesisAxisId === axe.id ? (
+                              <div className="space-y-2">
+                                <input value={newHypothesisContent} onChange={e => setNewHypothesisContent(e.target.value)}
+                                  placeholder="Contenu de l'hypothèse..."
+                                  style={inputStyle}
+                                  onKeyDown={e => { if (e.key === 'Enter' && newHypothesisContent.trim()) createHypothesisMutation.mutate({ axisId: axe.id, data: { content: newHypothesisContent.trim() } }); }}
+                                />
+                                <div className="flex gap-2">
+                                  <button onClick={() => { if (newHypothesisContent.trim()) createHypothesisMutation.mutate({ axisId: axe.id, data: { content: newHypothesisContent.trim() } }); }}
+                                    className="px-3 py-1.5 rounded-xl text-xs font-bold text-white"
+                                    style={{ background: 'linear-gradient(135deg,#34d399,#10b981)' }}>
+                                    Ajouter
+                                  </button>
+                                  <button onClick={() => { setNewHypothesisAxisId(null); setNewHypothesisContent(''); }}
+                                    className="px-3 py-1.5 rounded-xl text-xs" style={{ border: '1px solid #1e2535', color: '#9ca3af' }}>
+                                    Annuler
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <button onClick={() => setNewHypothesisAxisId(axe.id)}
+                                className="text-xs font-semibold w-full py-2 rounded-lg transition"
+                                style={{ border: '1px dashed #1e2535', color: '#34d399' }}>
+                                + Ajouter une hypothèse
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </div>
-                    )})}
+                    </div>
+                  )})}
+
+                  {/* ── Add axis ── */}
+                  {canCreateOrModify && (
+                    <div className="px-5 py-3" style={{ borderTop: '1px solid #1e2535', marginLeft: '12px' }}>
+                      {newAxisObjectiveId === obj.id ? (
+                        <div className="space-y-2">
+                          <input value={newAxisName} onChange={e => setNewAxisName(e.target.value)}
+                            placeholder="Nom de l'axe..."
+                            style={inputStyle}
+                            onKeyDown={e => { if (e.key === 'Enter' && newAxisName.trim()) createAxisMutation.mutate({ objectiveId: obj.id, data: { name: newAxisName.trim(), description: newAxisDescription.trim() } }); }}
+                          />
+                          <textarea value={newAxisDescription} onChange={e => setNewAxisDescription(e.target.value)}
+                            placeholder="Description (optionnelle)..."
+                            rows={2}
+                            style={{ ...inputStyle, resize: 'none' } as React.CSSProperties}
+                          />
+                          <div className="flex gap-2">
+                            <button onClick={() => { if (newAxisName.trim()) createAxisMutation.mutate({ objectiveId: obj.id, data: { name: newAxisName.trim(), description: newAxisDescription.trim() } }); }}
+                              className="px-3 py-1.5 rounded-xl text-xs font-bold text-white"
+                              style={{ background: 'linear-gradient(135deg,#6366f1,#4f46e5)' }}>
+                              Ajouter
+                            </button>
+                            <button onClick={() => { setNewAxisObjectiveId(null); setNewAxisName(''); setNewAxisDescription(''); }}
+                              className="px-3 py-1.5 rounded-xl text-xs" style={{ border: '1px solid #1e2535', color: '#9ca3af' }}>
+                              Annuler
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button onClick={() => setNewAxisObjectiveId(obj.id)}
+                          className="text-xs font-semibold w-full py-2 rounded-lg transition"
+                          style={{ border: '1px dashed #1e2535', color: '#a5b4fc' }}>
+                          + Ajouter un axe
+                        </button>
+                      )}
+                    </div>
+                  )}
                   </div>
                 </div>
               )})
+            )}
+
+            {/* ── Ajouter un objectif ── */}
+            {canCreateOrModify && (
+              <div style={cardStyle} className="p-4">
+                {showNewObjective ? (
+                  <div className="flex gap-2">
+                    <input value={newObjectiveContent} onChange={e => setNewObjectiveContent(e.target.value)}
+                      placeholder="Nouvel objectif..."
+                      style={inputStyle}
+                      onKeyDown={e => { if (e.key === 'Enter' && newObjectiveContent.trim()) createObjectiveMutation.mutate(newObjectiveContent.trim()); }}
+                    />
+                    <button onClick={() => { if (newObjectiveContent.trim()) createObjectiveMutation.mutate(newObjectiveContent.trim()); }}
+                      disabled={createObjectiveMutation.isPending || !newObjectiveContent.trim()}
+                      className="px-3 py-2 rounded-xl text-sm font-bold text-white"
+                      style={{ background: 'linear-gradient(135deg,#3b82f6,#6366f1)', opacity: createObjectiveMutation.isPending || !newObjectiveContent.trim() ? 0.5 : 1 }}>
+                      {createObjectiveMutation.isPending ? '...' : 'Ajouter'}
+                    </button>
+                    <button onClick={() => { setShowNewObjective(false); setNewObjectiveContent(''); }}
+                      className="px-3 py-2 rounded-xl text-sm" style={{ border: '1px solid #1e2535', color: '#9ca3af' }}>
+                      Annuler
+                    </button>
+                  </div>
+                ) : (
+                  <button onClick={() => setShowNewObjective(true)}
+                    className="text-sm font-semibold w-full py-2 rounded-xl transition"
+                    style={{ border: '1px dashed #1e2535', color: '#60a5fa' }}>
+                    + Ajouter un objectif
+                  </button>
+                )}
+              </div>
             )}
           </div>
         )}
