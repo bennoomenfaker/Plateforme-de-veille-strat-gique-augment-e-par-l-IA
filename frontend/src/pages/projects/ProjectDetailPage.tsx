@@ -3,6 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Layout from '../../components/layout/Layout';
 import api, { objectiveService, axisService, hypothesisService, projectsService } from '../../services/api';
+import SuggestionPanel from '../../components/ai/SuggestionPanel';
 import { useAuth } from '../../context/AuthContext';
 import { useOrgRole } from '../../hooks/useOrgRole';
 
@@ -1042,6 +1043,17 @@ export default function ProjectDetailPage() {
                                 <div className="pl-8 pr-3 pb-2.5">
                                   {newPlanHypothesisId === hyp.id ? (
                                     <div className="space-y-1.5">
+                                      <SuggestionPanel
+                                        prompt={`Tu es un expert en veille. Propose 3 questions de recherche précises en français pour cette hypothèse.
+
+Hypothèse: "${hyp.content}"
+Projet: "${project.nom}"
+
+Une question de recherche guide la collecte de données et doit être précise et actionnable.
+
+Réponds uniquement au format JSON : { "options": ["Question 1", "Question 2", "Question 3"] }`}
+                                        onSelect={(v) => setNewPlanQuestion(v)}
+                                        disabled={!project} />
                                       <input value={newPlanQuestion} onChange={e => setNewPlanQuestion(e.target.value)}
                                         placeholder="Question / objectif du plan..."
                                         style={inputStyle}
@@ -1084,6 +1096,18 @@ export default function ProjectDetailPage() {
                           <div className="px-5 py-3" style={{ borderTop: '1px solid #1e2535', marginLeft: '12px' }}>
                             {newHypothesisAxisId === axe.id ? (
                               <div className="space-y-2">
+                                <SuggestionPanel
+                                  prompt={`Tu es un expert en veille stratégique. Propose 3 hypothèses testables en français pour cet axe.
+
+Axe: "${axe.name}"
+Objectif lié: "${objectives?.find((o: any) => o.id === axe.objective_id)?.content || ''}"
+Projet: "${project.nom}"
+
+Une hypothèse est une supposition qui pourra être confirmée ou infirmée par la collecte de données.
+
+Réponds uniquement au format JSON : { "options": ["Hypothèse 1", "Hypothèse 2", "Hypothèse 3"] }`}
+                                  onSelect={(v) => setNewHypothesisContent(v)}
+                                  disabled={!project} />
                                 <input value={newHypothesisContent} onChange={e => setNewHypothesisContent(e.target.value)}
                                   placeholder="Contenu de l'hypothèse..."
                                   style={inputStyle}
@@ -1119,6 +1143,25 @@ export default function ProjectDetailPage() {
                     <div className="px-5 py-3" style={{ borderTop: '1px solid #1e2535', marginLeft: '12px' }}>
                       {newAxisObjectiveId === obj.id ? (
                         <div className="space-y-2">
+                          <SuggestionPanel
+                            prompt={`Tu es un expert en veille stratégique. Pour cet objectif, propose 3 axes d'analyse avec leur description en français.
+
+Objectif: "${obj.content}"
+Projet: "${project.nom}"
+Problématique: "${project.problematique}"
+
+Chaque axe doit avoir un nom précis et une description claire.
+Retourne chaque option au format: "Nom de l'axe|Description de l'axe"
+
+Exemple: "Axe technologique|Suivi des innovations et ruptures technologiques dans le secteur"
+
+Réponds uniquement au format JSON : { "options": ["Axe 1|Description 1", "Axe 2|Description 2", "Axe 3|Description 3"] }`}
+                            onSelect={(v) => {
+                              const [name, desc] = v.split('|');
+                              setNewAxisName(name.trim());
+                              if (desc) setNewAxisDescription(desc.trim());
+                            }}
+                            disabled={!project} />
                           <input value={newAxisName} onChange={e => setNewAxisName(e.target.value)}
                             placeholder="Nom de l'axe..."
                             style={inputStyle}
@@ -1159,22 +1202,37 @@ export default function ProjectDetailPage() {
             {canCreateOrModify && (
               <div style={cardStyle} className="p-4">
                 {showNewObjective ? (
-                  <div className="flex gap-2">
-                    <input value={newObjectiveContent} onChange={e => setNewObjectiveContent(e.target.value)}
-                      placeholder="Nouvel objectif..."
-                      style={inputStyle}
-                      onKeyDown={e => { if (e.key === 'Enter' && newObjectiveContent.trim()) createObjectiveMutation.mutate(newObjectiveContent.trim()); }}
-                    />
-                    <button onClick={() => { if (newObjectiveContent.trim()) createObjectiveMutation.mutate(newObjectiveContent.trim()); }}
-                      disabled={createObjectiveMutation.isPending || !newObjectiveContent.trim()}
-                      className="px-3 py-2 rounded-xl text-sm font-bold text-white"
-                      style={{ background: 'linear-gradient(135deg,#3b82f6,#6366f1)', opacity: createObjectiveMutation.isPending || !newObjectiveContent.trim() ? 0.5 : 1 }}>
-                      {createObjectiveMutation.isPending ? '...' : 'Ajouter'}
-                    </button>
-                    <button onClick={() => { setShowNewObjective(false); setNewObjectiveContent(''); }}
-                      className="px-3 py-2 rounded-xl text-sm" style={{ border: '1px solid #1e2535', color: '#9ca3af' }}>
-                      Annuler
-                    </button>
+                  <div className="space-y-2">
+                    <SuggestionPanel
+                      prompt={`Tu es un expert en stratégie de veille. Propose 3 objectifs stratégiques en français pour ce projet.
+
+Projet: "${project.nom}"
+Description: "${project.description}"
+Problématique: "${project.problematique}"
+Type de veille: "${MONITORING_LABELS[project.monitoring_type] || project.monitoring_type}"
+
+Chaque objectif doit commencer par un verbe d'action et être précis.
+
+Réponds uniquement au format JSON : { "options": ["Objectif 1", "Objectif 2", "Objectif 3"] }`}
+                      onSelect={(v) => setNewObjectiveContent(v)}
+                      disabled={!project} />
+                    <div className="flex gap-2">
+                      <input value={newObjectiveContent} onChange={e => setNewObjectiveContent(e.target.value)}
+                        placeholder="Nouvel objectif..."
+                        style={inputStyle}
+                        onKeyDown={e => { if (e.key === 'Enter' && newObjectiveContent.trim()) createObjectiveMutation.mutate(newObjectiveContent.trim()); }}
+                      />
+                      <button onClick={() => { if (newObjectiveContent.trim()) createObjectiveMutation.mutate(newObjectiveContent.trim()); }}
+                        disabled={createObjectiveMutation.isPending || !newObjectiveContent.trim()}
+                        className="px-3 py-2 rounded-xl text-sm font-bold text-white"
+                        style={{ background: 'linear-gradient(135deg,#3b82f6,#6366f1)', opacity: createObjectiveMutation.isPending || !newObjectiveContent.trim() ? 0.5 : 1 }}>
+                        {createObjectiveMutation.isPending ? '...' : 'Ajouter'}
+                      </button>
+                      <button onClick={() => { setShowNewObjective(false); setNewObjectiveContent(''); }}
+                        className="px-3 py-2 rounded-xl text-sm" style={{ border: '1px solid #1e2535', color: '#9ca3af' }}>
+                        Annuler
+                      </button>
+                    </div>
                   </div>
                 ) : (
                   <button onClick={() => setShowNewObjective(true)}

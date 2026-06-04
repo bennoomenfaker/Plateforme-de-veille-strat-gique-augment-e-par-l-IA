@@ -409,3 +409,8 @@ export const foldersService = {
   create: (data: any) => api.post('/folders', data),
   delete: (id: string) => api.delete(`/folders/${id}`),
 };
+
+// --- 17. AI COPILOT ---
+export const aiCopilotService = {
+  suggest: (prompt: string) => api.post('/ai-copilot/suggest', { prompt }),
+};

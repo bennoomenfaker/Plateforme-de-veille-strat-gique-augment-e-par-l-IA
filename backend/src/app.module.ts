@@ -20,6 +20,7 @@ import { CollectionPlansModule } from './collection-plans/collection-plans.modul
 import { StakeholdersModule } from './stakeholders/stakeholders.module';
 import { SchedulerModule } from './scheduler/scheduler.module';
 import { AiEnrichmentModule } from './ai-enrichment/ai-enrichment.module';
+import { AiCopilotModule } from './ai-copilot/ai-copilot.module';
 import { CollectionEngineModule } from './collection-engine/collection-engine.module';
 import { UploadModule } from './upload/upload.module'; // ← AJOUTÉ
 import { ProcessingModule } from './processing/processing.module';
@@ -53,6 +54,7 @@ import { InsightEngineModule } from './insight-engine/insight-engine.module';
     SchedulerModule,
     CollectionEngineModule,
     AiEnrichmentModule,
+    AiCopilotModule,
     UploadModule,
     ProcessingModule,
     ReportsModule,

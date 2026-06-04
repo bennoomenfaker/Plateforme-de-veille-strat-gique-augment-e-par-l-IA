@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Layout from '../../components/layout/Layout';
 import api from '../../services/api';
+import SuggestionPanel from '../../components/ai/SuggestionPanel';
+import RefineButton from '../../components/ai/RefineButton';
 
 const STEPS = [
   { id: 1, label: 'Projet' },
@@ -181,6 +183,20 @@ export default function CreateProjectWizard() {
     } catch (e: any) { setError(e.response?.data?.message || 'Erreur suppression hypothèse'); }
   };
 
+  const handleUpdateHypothesis = async (id: string, axisId: string, content: string) => {
+    try {
+      await api.put(`/axes/${axisId}/hypotheses/${id}`, { content });
+      setHypotheses(hypotheses.map((h: any) => h.id === id ? { ...h, content } : h));
+    } catch (e: any) { setError(e.response?.data?.message || 'Erreur mise à jour hypothèse'); }
+  };
+
+  const handleUpdatePlan = async (id: string, question: string) => {
+    try {
+      await api.put(`/collection-plans/${id}`, { question });
+      setPlans(plans.map((p: any) => p.id === id ? { ...p, question } : p));
+    } catch (e: any) { setError(e.response?.data?.message || 'Erreur mise à jour plan'); }
+  };
+
   const handleAddPerimeter = async () => {
     if (!perimForm.name) { setError('Nom obligatoire'); return; }
     setLoading(true); setError('');
@@ -314,6 +330,16 @@ export default function CreateProjectWizard() {
               </div>
               <div>
                 {label('Problématique')}
+                <SuggestionPanel
+                  prompt={`Tu es un expert en intelligence économique. Basé sur ce projet de veille, propose 3 problématiques pertinentes en français.
+
+Nom du projet: "${projectForm.nom}"
+Description: "${projectForm.description}"
+Type de veille: "${MONITORING_TYPES.find(t => t.value === projectForm.monitoring_type)?.label}"
+
+Réponds uniquement au format JSON : { "options": ["option 1", "option 2", "option 3"] }`}
+                  onSelect={(v) => setProjectForm({ ...projectForm, problematique: v })}
+                  disabled={!projectForm.nom} />
                 <textarea style={{ ...inputStyle, resize: 'none' } as React.CSSProperties} rows={3}
                   value={projectForm.problematique}
                   onChange={e => setProjectForm({ ...projectForm, problematique: e.target.value })}
@@ -354,7 +380,21 @@ export default function CreateProjectWizard() {
               ))}
             </div>
             {objectives.length < 5 && (
-              <div className="flex gap-3">
+              <>
+                <SuggestionPanel
+                  prompt={`Tu es un expert en stratégie de veille. Propose 3 objectifs stratégiques en français pour ce projet.
+
+Projet: "${projectForm.nom}"
+Description: "${projectForm.description}"
+Problématique: "${projectForm.problematique}"
+Type de veille: "${MONITORING_TYPES.find(t => t.value === projectForm.monitoring_type)?.label}"
+
+Chaque objectif doit commencer par un verbe d'action et être précis.
+
+Réponds uniquement au format JSON : { "options": ["Objectif 1", "Objectif 2", "Objectif 3"] }`}
+                  onSelect={(v) => setObjForm({ content: v })}
+                  disabled={!projectId} />
+                <div className="flex gap-3">
                 <input style={{ ...inputStyle, flex: 1 }} value={objForm.content}
                   onChange={e => setObjForm({ content: e.target.value })}
                   placeholder="Ex: Surveiller les tendances IA en Europe"
@@ -363,6 +403,7 @@ export default function CreateProjectWizard() {
                   className="px-4 py-2 rounded-xl text-sm font-bold text-white shrink-0"
                   style={{ background: 'linear-gradient(135deg,#3b82f6,#6366f1)' }}>+ Ajouter</button>
               </div>
+              </>
             )}
             <div className="flex justify-between mt-6">
               <button onClick={prev} className="px-4 py-2 rounded-xl text-sm" style={{ border: '1px solid #1e2535', color: '#9ca3af' }}>← Retour</button>
@@ -410,6 +451,24 @@ export default function CreateProjectWizard() {
               })}
             </div>
             <div className="space-y-3">
+              <SuggestionPanel
+                prompt={`Tu es un expert en veille stratégique. Pour cet objectif, propose 3 axes d'analyse avec leur description en français.
+
+Objectif: "${objectives.find((o: any) => o.id === axeForm.objective_id)?.content || 'Non sélectionné'}"
+Projet: "${projectForm.nom}"
+Problématique: "${projectForm.problematique}"
+
+Chaque axe doit avoir un nom précis et une description claire.
+Retourne chaque option au format: "Nom de l'axe|Description de l'axe"
+
+Exemple: "Axe technologique|Suivi des innovations et ruptures technologiques dans le secteur"
+
+Réponds uniquement au format JSON : { "options": ["Axe 1|Description 1", "Axe 2|Description 2", "Axe 3|Description 3"] }`}
+                onSelect={(v) => {
+                  const [name, desc] = v.split('|');
+                  setAxeForm({ ...axeForm, name: name.trim(), description: desc ? desc.trim() : '' });
+                }}
+                disabled={!axeForm.objective_id} />
               <div>
                 {label('Objectif associé *')}
                 <select style={inputStyle} value={axeForm.objective_id}
@@ -464,12 +523,29 @@ export default function CreateProjectWizard() {
                       <p className="text-xs mb-0.5" style={{ color: '#34d399' }}>Axe : {axe?.name}</p>
                       <p className="text-sm text-white">{hyp.content}</p>
                     </div>
-                    <DeleteBtn onClick={() => handleDeleteHyp(hyp.id, hyp.axis_id)} />
+                    <div className="flex items-center gap-1">
+                      <RefineButton hypothesis={hyp.content}
+                        onHypothesisRefined={(v) => handleUpdateHypothesis(hyp.id, hyp.axis_id, v)}
+                        onQuestionRefined={() => {}} />
+                      <DeleteBtn onClick={() => handleDeleteHyp(hyp.id, hyp.axis_id)} />
+                    </div>
                   </div>
                 );
               })}
             </div>
             <div className="space-y-3">
+              <SuggestionPanel
+                prompt={`Tu es un expert en veille stratégique. Propose 3 hypothèses testables en français pour cet axe.
+
+Axe: "${axes.find((a: any) => a.id === hypForm.axis_id)?.name || 'Non sélectionné'}"
+Objectif lié: "${objectives.find((o: any) => o.id === axes.find((a: any) => a.id === hypForm.axis_id)?.objective_id)?.content || ''}"
+Projet: "${projectForm.nom}"
+
+Une hypothèse est une supposition qui pourra être confirmée ou infirmée par la collecte de données.
+
+Réponds uniquement au format JSON : { "options": ["Hypothèse 1", "Hypothèse 2", "Hypothèse 3"] }`}
+                onSelect={(v) => setHypForm({ ...hypForm, content: v })}
+                disabled={!hypForm.axis_id} />
               <div>
                 {label('Axe associé *')}
                 <select style={inputStyle} value={hypForm.axis_id}
@@ -570,15 +646,20 @@ export default function CreateProjectWizard() {
               {plans.map((plan: any) => (
                 <div key={plan.id} className="flex items-start gap-3 px-4 py-3 rounded-xl"
                   style={{ background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.15)' }}>
-                  <div className="flex-1">
-                    <p className="text-sm font-semibold text-white mb-1">{plan.question}</p>
-                    <div className="flex gap-3 text-xs" style={{ color: '#6b7280' }}>
-                      <span>{plan.frequency}</span>
-                      <span>{plan.sources?.length || 0} source(s)</span>
-                      <span>{plan.keywords?.length || 0} mot(s)-clé(s)</span>
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-white mb-1">{plan.question}</p>
+                      <div className="flex gap-3 text-xs" style={{ color: '#6b7280' }}>
+                        <span>{plan.frequency}</span>
+                        <span>{plan.sources?.length || 0} source(s)</span>
+                        <span>{plan.keywords?.length || 0} mot(s)-clé(s)</span>
+                      </div>
                     </div>
-                  </div>
-                  <DeleteBtn onClick={() => handleDeletePlan(plan.id)} />
+                    <div className="flex items-center gap-1">
+                      <RefineButton question={plan.question}
+                        onQuestionRefined={(v) => handleUpdatePlan(plan.id, v)}
+                        onHypothesisRefined={() => {}} />
+                      <DeleteBtn onClick={() => handleDeletePlan(plan.id)} />
+                    </div>
                 </div>
               ))}
             </div>
@@ -593,6 +674,17 @@ export default function CreateProjectWizard() {
               </div>
               <div>
                 {label('Question de recherche *')}
+                <SuggestionPanel
+                  prompt={`Tu es un expert en veille. Propose 3 questions de recherche précises en français pour cette hypothèse.
+
+Hypothèse: "${hypotheses.find((h: any) => h.id === planForm.hypothesis_id)?.content || 'Non sélectionnée'}"
+Projet: "${projectForm.nom}"
+
+Une question de recherche guide la collecte de données et doit être précise et actionnable.
+
+Réponds uniquement au format JSON : { "options": ["Question 1", "Question 2", "Question 3"] }`}
+                  onSelect={(v) => setPlanForm({ ...planForm, question: v })}
+                  disabled={!planForm.hypothesis_id} />
                 <textarea style={{ ...inputStyle, resize: 'none' } as React.CSSProperties} rows={2}
                   value={planForm.question}
                   onChange={e => setPlanForm({ ...planForm, question: e.target.value })}
