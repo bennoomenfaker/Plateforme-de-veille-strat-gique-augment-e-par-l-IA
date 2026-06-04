@@ -13,9 +13,13 @@ export class AiCopilotController {
   @Post('suggest')
   @UseGuards(JwtAuthGuard)
   async suggest(@Body() body: { prompt: string }) {
-    const raw = await this.service.generate(body.prompt);
-    const parsed = this.llm.parseJsonResponse(raw);
-    return { suggestions: parsed || { options: [raw] } };
+    try {
+      const raw = await this.service.generate(body.prompt);
+      const parsed = this.llm.parseJsonResponse(raw);
+      return { suggestions: parsed || { options: [raw] } };
+    } catch (e) {
+      return { error: 'Service IA momentanément indisponible', suggestions: { options: [] } };
+    }
   }
 
   @Post('refine')
@@ -71,7 +75,12 @@ ${body.questions.map((q, i) => `${i + 1}. ${q}`).join('\n')}
 
 Retourne uniquement le JSON demandé sans texte supplémentaire.`;
 
-    const raw = await this.service.generate(`${systemPrompt}\n\n${userPrompt}`);
+    let raw: string;
+    try {
+      raw = await this.service.generate(`${systemPrompt}\n\n${userPrompt}`);
+    } catch {
+      return { hypotheses_corrigees: [], questions_corrigees: [] };
+    }
     const parsed = this.llm.parseJsonResponse(raw);
     return {
       hypotheses_corrigees: parsed?.hypotheses_corrigees || [],
@@ -115,6 +124,7 @@ Retourner uniquement JSON :
   "project_name": "",
   "problematique": "",
   "objectif": "",
+  "objectives": [],
   "axes": [],
   "hypotheses": [],
   "questions": []
@@ -122,92 +132,78 @@ Retourner uniquement JSON :
 
 Ne pas ajouter de texte avant ou après le JSON.`;
     } else if (body.mode === 'correct') {
-      systemPrompt = `Tu es un expert en intelligence économique, veille stratégique et structuration de projets SaaS.
+      systemPrompt = `Tu es un expert en veille stratégique. Détecte UNIQUEMENT les problèmes GRAVES dans ce projet.
 
-Tu es intégré dans une application SaaS de veille.
+RÈGLES STRICTES — dans l'ordre de priorité :
 
-Ton rôle est de corriger et améliorer un projet de veille existant.
+1. MOTS ABSURDES : détecte les valeurs sans sens (lettre seule comme "i", "hh", mots aléatoires, caractères seuls) → type="remove"
+2. HORS SUJET : éléments sans rapport avec le projet → type="remove"
+3. DOUBLONS : éléments identiques ou très similaires → type="remove"
+4. AMÉLIORATIONS MINEURES : NE PAS signaler les éléments bien formulés et cohérents. Signale UNIQUEMENT si l'élément est vraiment mal formulé ou trop vague → type="replace"
 
-🎯 CORRECTION / MODIFICATION DE PROJET
+SI un élément est pertinent, cohérent et bien formulé → NE PAS le corriger.
+SI un élément est absurde (lettre seule, mot vide) → type="remove".
 
-### 1. DÉTECTION DE COHÉRENCE
-Vérifier :
-- problématique ↔ objectif ↔ axes ↔ hypothèses ↔ questions
-- lien avec le sujet principal
+Pour chaque problème :
+- type: "remove" ou "replace"
+- element: "objectif", "axe", "hypothese", "question"
+- index: numéro dans la liste (1-based)
+- original: valeur originale
+- raison: explication courte
+- correction: suggestion
 
-Identifier :
-- éléments hors sujet
-- contradictions
-- manque de lien logique
+Réponds UNIQUEMENT avec ce JSON, sans texte avant ni après :
 
-### 2. CORRECTION INTELLIGENTE
-- ajuster les éléments incohérents
-- simplifier les phrases trop longues
-- aligner tous les éléments sur le même sujet
-- conserver les idées utilisateur autant que possible
-
-### 3. AMÉLIORATION OPTIONNELLE
-Dans coherence_report.suggestions, proposer des améliorations.
-
-🧠 RÈGLE DE COHÉRENCE GLOBALE :
-Tout le projet doit répondre à une seule logique centrale.
-Si un élément s'écarte du sujet : le corriger ou le reformuler.
-
-📤 FORMAT DE SORTIE OBLIGATOIRE :
-Retourner uniquement JSON :
 {
-  "project_name": "",
   "problematique": "",
   "objectif": "",
+  "objectives": [],
   "axes": [],
   "hypotheses": [],
   "questions": [],
   "coherence_report": {
-    "is_coherent": true/false,
-    "issues": [],
+    "nb_problemes": 0,
+    "corrections": [
+      {
+        "type": "remove",
+        "element": "objectif",
+        "index": 1,
+        "original": "fakerben",
+        "raison": "Mot sans rapport avec le projet",
+        "correction": "Supprimer cet objectif"
+      }
+    ],
     "suggestions": []
   }
 }
 
-Ne pas ajouter de texte avant ou après le JSON.`;
+Les listes objectives, axes, hypotheses, questions doivent contenir les VERSIONS CORRIGÉES (sans les éléments supprimés).
+Ne laisse JAMAIS les listes vides si le projet original avait des éléments valides.
+Si tout est cohérent, coherence_report.nb_problemes = 0 et corrections = [].`;
     } else if (body.mode === 'chat') {
-      systemPrompt = `Tu es un expert en intelligence économique, veille stratégique et structuration de projets SaaS.
+      systemPrompt = `Tu es un expert en veille stratégique. Modifie le projet selon l'instruction.
 
-Tu es intégré dans une application SaaS de veille.
+Règles :
+- ne modifie QUE la partie demandée, garde le reste intact
+- assure la cohérence globale du projet
+- réponds UNIQUEMENT avec ce JSON :
 
-🎯 MODE CHATBOT IA — modification en langage naturel
-
-L'utilisateur va donner une instruction comme :
-- "change l'objectif"
-- "améliore la problématique"
-- "rends les hypothèses plus simples"
-- "ce n'est pas cohérent"
-
-Tu dois :
-- modifier uniquement la partie demandée
-- garder le reste intact
-- assurer la cohérence globale
-
-🧠 RÈGLE DE COHÉRENCE GLOBALE :
-Tout le projet doit répondre à une seule logique centrale.
-
-📤 FORMAT DE SORTIE OBLIGATOIRE :
-Retourner uniquement JSON :
 {
-  "project_name": "",
   "problematique": "",
   "objectif": "",
+  "objectives": [],
   "axes": [],
   "hypotheses": [],
   "questions": [],
   "coherence_report": {
-    "is_coherent": true/false,
-    "issues": [],
+    "nb_problemes": 0,
+    "corrections": [],
     "suggestions": []
   }
 }
 
-Ne pas ajouter de texte avant ou après le JSON.`;
+Tous les champs doivent être remplis (valeurs originales ou modifiées).
+Ne laisse JAMAIS de listes vides si le projet avait des éléments.`;
     }
 
     const projectContext = body.project
@@ -233,8 +229,21 @@ Questions: ${(body.project.plans || []).map((p: any) => p.question).join(', ')}`
         : `${body.mode === 'correct' ? 'Analyse et améliore ce projet de veille' : 'Applique cette modification au projet'} :\n\n${projectContext}${userInstruction}`
     }\n\nRetourne uniquement le JSON demandé sans texte supplémentaire.`;
 
-    const raw = await this.service.generate(`${systemPrompt}\n\n${userPrompt}`);
-    const parsed = this.llm.parseJsonResponse(raw);
-    return parsed || { error: 'Réponse invalide du LLM' };
+    try {
+      const raw = await this.service.generate(`${systemPrompt}\n\n${userPrompt}`);
+      const parsed = this.llm.parseJsonResponse(raw);
+      if (parsed) return parsed;
+      return {
+        error: 'Réponse invalide du LLM',
+        raw: raw.substring(0, 2000),
+      };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return {
+        error: `Service IA momentanément indisponible. Veuillez réessayer dans quelques instants.`,
+        details: msg,
+        raw: '',
+      };
+    }
   }
 }

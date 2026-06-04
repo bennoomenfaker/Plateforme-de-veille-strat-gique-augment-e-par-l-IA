@@ -414,6 +414,11 @@ Réponds uniquement au format JSON : { "options": ["Objectif 1", "Objectif 2", "
               </div>
               </>
             )}
+            {objectives.length >= 5 && (
+              <p className="text-xs text-center py-3 px-4 rounded-xl" style={{ background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.15)', color: '#60a5fa' }}>
+                ✓ Vous avez créé 5 objectifs (maximum atteint)
+              </p>
+            )}
             <div className="flex justify-between mt-6">
               <button onClick={prev} className="px-4 py-2 rounded-xl text-sm" style={{ border: '1px solid #1e2535', color: '#9ca3af' }}>← Retour</button>
               <button onClick={next} disabled={objectives.length === 0}

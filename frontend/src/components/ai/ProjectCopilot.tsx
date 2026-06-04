@@ -37,31 +37,106 @@ export default function ProjectCopilot({ mode, project, onGenerated, onCorrected
     }
   };
 
-  const renderIssues = () => {
-    if (!result?.coherence_report) return null;
-    const r = result.coherence_report;
+  const renderField = (label: string, value: string | undefined) => {
+    if (!value) return null;
+    return <p><strong style={{ color: '#c4b5fd' }}>{label} :</strong> {value}</p>;
+  };
+
+  const renderList = (label: string, items: any[] | undefined) => {
+    if (!items || items.length === 0) return null;
     return (
-      <div className="mt-3 space-y-2">
-        <div className={`flex items-center gap-2 text-xs font-bold ${r.is_coherent ? 'text-green-400' : 'text-yellow-400'}`}>
+      <div>
+        <p><strong style={{ color: '#c4b5fd' }}>{label} :</strong></p>
+        <ul className="list-disc pl-4 space-y-0.5">
+          {items.map((item: any, i: number) => (
+            <li key={i}>{typeof item === 'string' ? item : item.content || item.name || item.question || JSON.stringify(item)}</li>
+          ))}
+        </ul>
+      </div>
+    );
+  };
+
+  const renderCoherenceReport = () => {
+    if (!result?.coherence_report) return null;
+    if (result.error) return null;
+    const r = result.coherence_report;
+
+    const hasIssues = r.issues?.length > 0;
+    const hasSuggestions = r.suggestions?.length > 0;
+    const hasCorrections = r.corrections?.length > 0;
+
+    if (!hasIssues && !hasSuggestions && !hasCorrections) return null;
+
+    return (
+      <div className="mt-3 p-3 rounded-xl space-y-3"
+        style={{ background: 'rgba(251,191,36,0.06)', border: '1px solid rgba(251,191,36,0.15)' }}>
+        <div className="flex items-center gap-2 text-xs font-bold text-yellow-400">
           <span>{r.is_coherent ? '✓ Cohérent' : '⚠ Problèmes détectés'}</span>
         </div>
-        {r.issues?.length > 0 && (
+
+        {hasIssues && (
           <div className="space-y-1">
+            <p className="text-xs font-semibold" style={{ color: '#fbbf24' }}>Problèmes :</p>
             {r.issues.map((issue: string, i: number) => (
               <p key={i} className="text-xs" style={{ color: '#f87171' }}>• {issue}</p>
             ))}
           </div>
         )}
-        {r.suggestions?.length > 0 && (
+
+        {hasCorrections && (
+          <div className="space-y-1">
+            <p className="text-xs font-semibold" style={{ color: '#34d399' }}>Corrections proposées :</p>
+            {r.corrections.map((c: any, i: number) => (
+              <div key={i} className="flex items-start gap-2 py-1.5 px-2 rounded-lg"
+                style={{ background: 'rgba(16,185,129,0.05)' }}>
+                <span className={`text-xs font-bold px-1.5 py-0.5 rounded shrink-0 ${
+                  c.type === 'remove' ? 'text-red-400 bg-red-400/10' : 'text-blue-400 bg-blue-400/10'
+                }`}>
+                  {c.type === 'remove' ? 'SUPPR' : c.type === 'replace' ? 'REMPL' : 'MODIF'}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold" style={{ color: '#d1d5db' }}>
+                    {c.element} {c.index ? `#${c.index}` : ''}
+                  </p>
+                  {c.original && (
+                    <p className="text-xs line-through" style={{ color: '#6b7280' }}>{c.original}</p>
+                  )}
+                  <p className="text-xs" style={{ color: '#34d399' }}>{c.correction}</p>
+                  {c.raison && (
+                    <p className="text-xs mt-0.5" style={{ color: '#fbbf24' }}>→ {c.raison}</p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {hasSuggestions && (
           <div className="space-y-1">
             <p className="text-xs font-semibold" style={{ color: '#a78bfa' }}>Suggestions :</p>
-            {r.suggestions.map((s: string, i: number) => (
-              <p key={i} className="text-xs" style={{ color: '#c4b5fd' }}>• {s}</p>
+            {r.suggestions.map((s: any, i: number) => (
+              <p key={i} className="text-xs" style={{ color: '#c4b5fd' }}>
+                • {typeof s === 'string' ? s : s.suggestion || s.correction || s.message || JSON.stringify(s)}
+              </p>
             ))}
           </div>
         )}
       </div>
     );
+  };
+
+  const hasContent = (data: any) => {
+    if (!data) return false;
+    return data.problematique || data.objectif || data.objectives?.length > 0 ||
+      data.axes?.length > 0 || data.hypotheses?.length > 0 || data.questions?.length > 0;
+  };
+
+  const hasCorrections = (data: any) => {
+    return data?.coherence_report?.corrections?.length > 0;
+  };
+
+  const hasIssues = (data: any) => {
+    return data?.coherence_report?.issues?.length > 0;
   };
 
   const buttonLabel = mode === 'generate' ? 'Générer avec IA' : mode === 'correct' ? 'Vérifier la cohérence' : 'IA Assistant';
@@ -113,37 +188,50 @@ export default function ProjectCopilot({ mode, project, onGenerated, onCorrected
 
           {error && <p className="text-xs" style={{ color: '#f87171' }}>{error}</p>}
 
-          {result && mode === 'generate' && (
+          {result && mode === 'generate' && hasContent(result) && (
             <div className="space-y-2 text-xs" style={{ color: '#d1d5db' }}>
-              <p><strong style={{ color: '#c4b5fd' }}>Nom :</strong> {result.project_name}</p>
-              <p><strong style={{ color: '#c4b5fd' }}>Problématique :</strong> {result.problematique}</p>
-              <p><strong style={{ color: '#c4b5fd' }}>Objectif :</strong> {result.objectif}</p>
-              <p><strong style={{ color: '#c4b5fd' }}>Axes :</strong> {result.axes?.join(', ')}</p>
-              <p><strong style={{ color: '#c4b5fd' }}>Hypothèses :</strong></p>
-              <ul className="list-disc pl-4 space-y-1">
-                {result.hypotheses?.map((h: string, i: number) => <li key={i}>{h}</li>)}
-              </ul>
-              <p><strong style={{ color: '#c4b5fd' }}>Questions :</strong></p>
-              <ul className="list-disc pl-4 space-y-1">
-                {result.questions?.map((q: string, i: number) => <li key={i}>{q}</li>)}
-              </ul>
+              {renderField('Nom', result.project_name)}
+              {renderField('Problématique', result.problematique)}
+              {renderField('Objectif', result.objectif)}
+              {renderList('Objectifs', result.objectives)}
+              {renderList('Axes', result.axes)}
+              {renderList('Hypothèses', result.hypotheses)}
+              {renderList('Questions', result.questions)}
             </div>
           )}
 
           {result && mode !== 'generate' && (
             <div className="space-y-2 text-xs" style={{ color: '#d1d5db' }}>
-              <p><strong style={{ color: '#c4b5fd' }}>Problématique :</strong> {result.problematique}</p>
-              <p><strong style={{ color: '#c4b5fd' }}>Objectif :</strong> {result.objectif}</p>
-              <p><strong style={{ color: '#c4b5fd' }}>Axes :</strong> {result.axes?.join(', ')}</p>
-              <p><strong style={{ color: '#c4b5fd' }}>Hypothèses :</strong></p>
-              <ul className="list-disc pl-4 space-y-1">
-                {result.hypotheses?.map((h: string, i: number) => <li key={i}>{h}</li>)}
-              </ul>
-              <p><strong style={{ color: '#c4b5fd' }}>Questions :</strong></p>
-              <ul className="list-disc pl-4 space-y-1">
-                {result.questions?.map((q: string, i: number) => <li key={i}>{q}</li>)}
-              </ul>
-              {renderIssues()}
+              {result.error ? (
+                <div className="p-3 rounded-xl" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
+                  <p className="font-semibold" style={{ color: '#f87171' }}>Erreur : {result.error}</p>
+                  {result.raw && (
+                    <details className="mt-2">
+                      <summary className="text-xs cursor-pointer" style={{ color: '#9ca3af' }}>Voir la réponse brute</summary>
+                      <pre className="mt-1 p-2 rounded text-xs whitespace-pre-wrap" style={{ background: '#0f1117', color: '#9ca3af', maxHeight: '200px', overflow: 'auto' }}>{result.raw}</pre>
+                    </details>
+                  )}
+                </div>
+              ) : (
+                <>
+                  {renderField('Problématique', result.problematique)}
+                  {renderField('Objectif', result.objectif)}
+                  {renderList('Objectifs', result.objectives)}
+                  {renderList('Axes', result.axes)}
+                  {renderList('Hypothèses', result.hypotheses)}
+                  {renderList('Questions', result.questions)}
+                  {renderCoherenceReport()}
+
+                  {!hasContent(result) && !hasCorrections(result) && hasIssues(result) && (
+                    <div className="p-3 rounded-xl" style={{ background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.2)' }}>
+                      <p style={{ color: '#fbbf24' }}>
+                        ⚠ Des problèmes ont été détectés mais aucune correction automatique n'a été générée. 
+                        Utilisez le panneau "IA Assistant" pour demander une modification spécifique.
+                      </p>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           )}
 
