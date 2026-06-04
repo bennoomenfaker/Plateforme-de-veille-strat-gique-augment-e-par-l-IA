@@ -413,4 +413,8 @@ export const foldersService = {
 // --- 17. AI COPILOT ---
 export const aiCopilotService = {
   suggest: (prompt: string) => api.post('/ai-copilot/suggest', { prompt }),
+  refine: (data: { hypotheses: string[]; questions: string[] }) =>
+    api.post('/ai-copilot/refine', data),
+  project: (data: { mode: string; description?: string; project?: any; instruction?: string }) =>
+    api.post('/ai-copilot/project', data),
 };

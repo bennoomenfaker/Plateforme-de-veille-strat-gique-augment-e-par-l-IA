@@ -4,6 +4,7 @@ import Layout from '../../components/layout/Layout';
 import api from '../../services/api';
 import SuggestionPanel from '../../components/ai/SuggestionPanel';
 import RefineButton from '../../components/ai/RefineButton';
+import ProjectCopilot from '../../components/ai/ProjectCopilot';
 
 const STEPS = [
   { id: 1, label: 'Projet' },
@@ -314,6 +315,14 @@ export default function CreateProjectWizard() {
         {step === 1 && (
           <div style={cardStyle}>
             <h2 className="text-lg font-bold text-white mb-6">Informations du projet</h2>
+            <div className="mb-4">
+              <ProjectCopilot mode="generate"
+                onGenerated={(data) => {
+                  if (data.project_name) setProjectForm((prev: any) => ({ ...prev, nom: data.project_name }));
+                  if (data.problematique) setProjectForm((prev: any) => ({ ...prev, problematique: data.problematique }));
+                  if (data.description) setProjectForm((prev: any) => ({ ...prev, description: data.description }));
+                }} />
+            </div>
             <div className="space-y-4">
               <div>
                 {label('Nom du projet *')}

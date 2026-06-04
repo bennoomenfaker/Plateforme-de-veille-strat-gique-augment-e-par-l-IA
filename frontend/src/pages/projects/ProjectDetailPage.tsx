@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Layout from '../../components/layout/Layout';
 import api, { objectiveService, axisService, hypothesisService, projectsService } from '../../services/api';
 import SuggestionPanel from '../../components/ai/SuggestionPanel';
+import ProjectCopilot from '../../components/ai/ProjectCopilot';
 import { useAuth } from '../../context/AuthContext';
 import { useOrgRole } from '../../hooks/useOrgRole';
 
@@ -654,6 +655,29 @@ export default function ProjectDetailPage() {
             </div>
           ))}
         </div>
+
+        {/* ── IA Copilot ─────────────────────────────────────────────────────── */}
+        {project && (() => {
+          const flatAxes = objectives.flatMap((o: any) => o.axes || []);
+          const flatHypotheses = flatAxes.flatMap((a: any) => a.hypotheses || []);
+          const flatPlans = flatHypotheses.flatMap((h: any) => h.collection_plans || h.plans || []);
+          const projectData = {
+            nom: project.nom,
+            description: project.description,
+            problematique: project.problematique,
+            monitoring_type: project.monitoring_type,
+            objectives,
+            axes: flatAxes,
+            hypotheses: flatHypotheses,
+            plans: flatPlans,
+          };
+          return (
+            <div className="grid grid-cols-2 gap-3 mb-6">
+              <ProjectCopilot mode="correct" project={projectData} />
+              <ProjectCopilot mode="chat" project={projectData} />
+            </div>
+          );
+        })()}
 
         {/* ── Onglets ─────────────────────────────────────────────────────────── */}
         <div className="flex gap-2 mb-6">
