@@ -14,8 +14,8 @@ backend/generated/
 backend/.env
 .env
 
-# Docker volumes
-*.log
+# This project context — not for public repo
+CONTEXT.md
 
 # OS
 .DS_Store

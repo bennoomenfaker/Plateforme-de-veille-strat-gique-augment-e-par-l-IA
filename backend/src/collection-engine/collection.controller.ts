@@ -35,6 +35,13 @@ export class CollectionController {
     return this.collectionManager.getJobsByPlan(planId);
   }
 
+  // ─── Sprint 8 — Voir un job par ID (pour le polling progress) ─────────────
+  @Get('collection-jobs/:jobId')
+  @UseGuards(JwtAuthGuard)
+  async getJobById(@Param('jobId') jobId: string) {
+    return this.collectionManager.getJobById(jobId);
+  }
+
   // ─── Sprint 3 — Voir les raw items d'un plan ──────────────────────────────
   @Get('collection-plans/:planId/raw-items')
   @UseGuards(JwtAuthGuard)

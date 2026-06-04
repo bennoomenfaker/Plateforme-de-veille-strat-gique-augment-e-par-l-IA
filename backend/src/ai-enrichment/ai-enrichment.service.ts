@@ -1,16 +1,30 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { LlmProviderService } from './llm-provider.service';
 import { buildEnrichmentPrompt } from './prompt-templates/enrichment.prompt';
 
 @Injectable()
-export class AiEnrichmentService {
+export class AiEnrichmentService implements OnModuleInit {
   private readonly logger = new Logger(AiEnrichmentService.name);
 
   constructor(
     private prisma: PrismaService,
     private llm: LlmProviderService,
   ) {}
+
+  async onModuleInit() {
+    const stale = await this.prisma.aiEnrichmentJob.updateMany({
+      where: { status: 'RUNNING' },
+      data: {
+        status: 'FAILED',
+        error: 'Serveur redémarré — enrichissement interrompu',
+        finished_at: new Date(),
+      },
+    });
+    if (stale.count > 0) {
+      this.logger.warn(`${stale.count} job(s) RUNNING marqués FAILED (redémarrage serveur)`);
+    }
+  }
 
   async enrichProject(projectId: string, force = false): Promise<any> {
     if (force) {
@@ -253,7 +267,6 @@ export class AiEnrichmentService {
           where: { processed_item_id: item.id },
           create: data,
           update: data,
-        });
         });
 
         if (plan.hypothesis_id) {

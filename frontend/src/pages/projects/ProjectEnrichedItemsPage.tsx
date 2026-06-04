@@ -246,7 +246,6 @@ export default function ProjectEnrichedItemsPage() {
   const enrichMut = useMutation({
     mutationFn: () => aiEnrichmentService.enrichProject(projectId!),
     onMutate: () => {
-      setJobProgress({ processed: 0, total: 1, skipped: 0, failed: 0 });
       setPollTrigger(t => t + 1);
     },
     onSuccess: async (res) => {
@@ -276,42 +275,61 @@ export default function ProjectEnrichedItemsPage() {
 
   useEffect(() => {
     let cancelled = false;
+    let retries = 0;
+
+    const startPolling = (jobId: string) => {
+      setActiveJobId(jobId);
+      pollRef.current = setInterval(async () => {
+        if (cancelled) { if (pollRef.current) clearInterval(pollRef.current); return; }
+        try {
+          const r2 = await aiEnrichmentService.getJobById(jobId);
+          const j = r2.data;
+          if (!j) { if (pollRef.current) clearInterval(pollRef.current); stopPolling(); return; }
+          setJobProgress({ processed: j.processed ?? 0, total: j.total ?? 0, skipped: j.skipped ?? 0, failed: j.failed ?? 0 });
+          if (j.status === 'DONE' || j.status === 'FAILED' || j.status === 'CANCELLED') {
+            if (pollRef.current) clearInterval(pollRef.current);
+            stopPolling();
+            await queryClient.invalidateQueries({ queryKey: ['enriched-items', projectId] });
+            await queryClient.invalidateQueries({ queryKey: ['ai-stats', projectId] });
+            setNotification({
+              type: j.status === 'CANCELLED' ? 'success' : j.status === 'DONE' ? 'success' : 'error',
+              msg: j.status === 'CANCELLED'
+                ? 'Enrichissement annulé'
+                : j.status === 'DONE'
+                  ? `Enrichissement terminé : ${j.processed} traités · ${j.skipped} ignorés · ${j.failed} erreurs`
+                  : "L'enrichissement a échoué",
+            });
+            setTimeout(() => setNotification(null), 8000);
+          }
+        } catch {
+          if (pollRef.current) clearInterval(pollRef.current);
+          stopPolling();
+        }
+      }, 3000);
+    };
+
     const poll = async () => {
       try {
         const res = await aiEnrichmentService.getJobs(projectId!, 1);
         const lastJob = res.data?.[0];
-        if (!lastJob || lastJob.status !== 'RUNNING' || cancelled) return;
-        setActiveJobId(lastJob.id);
-        setJobProgress({ processed: lastJob.processed ?? 0, total: lastJob.total ?? 0, skipped: lastJob.skipped ?? 0, failed: lastJob.failed ?? 0 });
-        pollRef.current = setInterval(async () => {
-          if (cancelled) { if (pollRef.current) clearInterval(pollRef.current); return; }
-          try {
-            const r2 = await aiEnrichmentService.getJobById(lastJob.id);
-            const j = r2.data;
-            if (!j) { if (pollRef.current) clearInterval(pollRef.current); stopPolling(); return; }
-            setJobProgress({ processed: j.processed ?? 0, total: j.total ?? 0, skipped: j.skipped ?? 0, failed: j.failed ?? 0 });
-            if (j.status === 'DONE' || j.status === 'FAILED' || j.status === 'CANCELLED') {
-              if (pollRef.current) clearInterval(pollRef.current);
-              stopPolling();
-              await queryClient.invalidateQueries({ queryKey: ['enriched-items', projectId] });
-              await queryClient.invalidateQueries({ queryKey: ['ai-stats', projectId] });
-              setNotification({
-                type: j.status === 'CANCELLED' ? 'success' : j.status === 'DONE' ? 'success' : 'error',
-                msg: j.status === 'CANCELLED'
-                  ? 'Enrichissement annulé'
-                  : j.status === 'DONE'
-                    ? `Enrichissement terminé : ${j.processed} traités · ${j.skipped} ignorés · ${j.failed} erreurs`
-                    : "L'enrichissement a échoué",
-              });
-              setTimeout(() => setNotification(null), 8000);
-            }
-          } catch {
-            if (pollRef.current) clearInterval(pollRef.current);
-            stopPolling();
+        if (cancelled) return;
+        if (!lastJob || lastJob.status !== 'RUNNING') {
+          if (retries < 30) {
+            retries++;
+            setTimeout(poll, 1000);
           }
-        }, 3000);
-      } catch { /* */ }
+          return;
+        }
+        setJobProgress({ processed: lastJob.processed ?? 0, total: lastJob.total ?? 0, skipped: lastJob.skipped ?? 0, failed: lastJob.failed ?? 0 });
+        startPolling(lastJob.id);
+      } catch {
+        if (retries < 30) {
+          retries++;
+          setTimeout(poll, 1000);
+        }
+      }
     };
+
     poll();
     return () => { cancelled = true; if (pollRef.current) clearInterval(pollRef.current); };
   }, [projectId, queryClient, stopPolling, pollTrigger]);
@@ -389,27 +407,7 @@ export default function ProjectEnrichedItemsPage() {
               }}>
               {isRunning ? 'En cours...' : '🧠 Lancer l\'enrichissement IA'}
             </button>
-            <button
-              onClick={() => {
-                if (confirm('Ré-enrichir tous les articles ? Cela va supprimer les enrichissements existants et tout relancer.')) {
-                  setPollTrigger(t => t + 1);
-                  setJobProgress({ processed: 0, total: 1, skipped: 0, failed: 0 });
-                  aiEnrichmentService.enrichProjectForce(projectId!).then(() => {
-                    queryClient.invalidateQueries({ queryKey: ['enriched-items', projectId] });
-                    queryClient.invalidateQueries({ queryKey: ['ai-stats', projectId] });
-                  });
-                }
-              }}
-              disabled={isRunning}
-              className="text-sm px-3 py-2 rounded-xl transition"
-              style={{
-                background: isRunning ? '#1e2535' : '#450a0a',
-                color: isRunning ? '#6b7280' : '#f87171',
-                border: '1px solid #7f1d1d',
-                cursor: isRunning ? 'not-allowed' : 'pointer',
-              }}>
-              ↻ Ré-enrichir tout
-            </button>
+
           </div>
         </div>
 
@@ -556,28 +554,7 @@ export default function ProjectEnrichedItemsPage() {
                     style={{ background: 'linear-gradient(135deg,#7c3aed,#a78bfa)' }}>
                     Lancer l'enrichissement IA
                   </button>
-                  <button
-                    onClick={() => {
-                      if (confirm('Ré-enrichir tous les articles ? Cela va supprimer les enrichissements existants et tout relancer.')) {
-                        setPollTrigger(t => t + 1);
-                        aiEnrichmentService.enrichProjectForce(projectId!).then(() => {
-                          queryClient.invalidateQueries({ queryKey: ['enriched-items', projectId] });
-                          queryClient.invalidateQueries({ queryKey: ['ai-stats', projectId] });
-                          setNotification({ type: 'success', msg: 'Ré-enrichissement terminé !' });
-                          setTimeout(() => setNotification(null), 5000);
-                        });
-                      }
-                    }}
-                    disabled={isRunning}
-                    className="text-sm px-4 py-2 rounded-xl transition"
-                    style={{
-                      background: isRunning ? '#1e2535' : '#450a0a',
-                      color: isRunning ? '#6b7280' : '#f87171',
-                      border: '1px solid #7f1d1d',
-                      cursor: isRunning ? 'not-allowed' : 'pointer',
-                    }}>
-                    ↻ Ré-enrichir tout
-                  </button>
+
                 </div>
               )}
             </div>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Layout from '../../components/layout/Layout';
@@ -59,6 +59,18 @@ export default function CollectionPlanDetailPage() {
   const [uploadMsg, setUploadMsg] = useState('');
   const [deletingPdfId, setDeletingPdfId] = useState<string | null>(null);
   const [showAddSource, setShowAddSource] = useState(false);
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const [collectionProgress, setCollectionProgress] = useState<{
+    totalSources: number; processedSources: number; currentSource: string | null;
+    collected: number; duplicates: number;
+  } | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const stopCollectionPolling = useCallback(() => {
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+    setActiveJobId(null);
+    setCollectionProgress(null);
+  }, []);
 
   const [newSource, setNewSource] = useState({
     source_type: 'RSS',
@@ -86,7 +98,6 @@ export default function CollectionPlanDetailPage() {
     queryKey: ['jobs', planId],
     queryFn: () => collectionPlanService.getJobs(planId!).then(r => r.data),
     enabled: !!planId,
-    refetchInterval: running ? 3000 : false,
   });
 
   const { data: rawData, refetch: refetchRaw } = useQuery({
@@ -183,6 +194,88 @@ export default function CollectionPlanDetailPage() {
       setAddingKeyword(false);
     }
   };
+
+  // Polling dédié pour le progress de la collecte
+  useEffect(() => {
+    if (!running) return;
+    let cancelled = false;
+    let retries = 0;
+
+    const poll = async () => {
+      try {
+        const res = await collectionPlanService.getJobs(planId!);
+        const allJobs: CollectionJob[] = Array.isArray(res.data) ? res.data : [];
+        const liveJob = allJobs.find(j => j.status === 'RUNNING');
+        if (cancelled) return;
+
+        if (liveJob) {
+          setActiveJobId(liveJob.id);
+          const p = liveJob.logs as any;
+          if (p?.progress) {
+            setCollectionProgress({
+              totalSources: p.progress.totalSources,
+              processedSources: p.progress.processedSources,
+              currentSource: p.progress.currentSource,
+              collected: p.collected ?? 0,
+              duplicates: p.duplicates ?? 0,
+            });
+          }
+          // Job already done between polls
+          if (liveJob.status === 'DONE' || liveJob.status === 'FAILED') {
+            stopCollectionPolling();
+            setRunning(false);
+            setRunMsg(
+              liveJob.status === 'DONE'
+                ? `${p?.collected ?? 0} article(s) collecté(s), ${p?.duplicates ?? 0} doublon(s) ignoré(s)`
+                : 'Erreur lors de la collecte'
+            );
+            await refetchJobs();
+            await refetchRaw();
+            return;
+          }
+          // Found the RUNNING job — switch to fast polling
+          if (pollRef.current) clearInterval(pollRef.current);
+          pollRef.current = setInterval(async () => {
+            if (cancelled) { if (pollRef.current) clearInterval(pollRef.current); return; }
+            try {
+              const r2 = await collectionPlanService.getJobById(liveJob.id);
+              const j = r2.data;
+              if (!j) { stopCollectionPolling(); return; }
+              const lp = j.logs as any;
+              if (lp?.progress) {
+                setCollectionProgress({
+                  totalSources: lp.progress.totalSources,
+                  processedSources: lp.progress.processedSources,
+                  currentSource: lp.progress.currentSource,
+                  collected: lp.collected ?? 0,
+                  duplicates: lp.duplicates ?? 0,
+                });
+              }
+              if (j.status === 'DONE' || j.status === 'FAILED') {
+                if (pollRef.current) clearInterval(pollRef.current);
+                stopCollectionPolling();
+                setRunning(false);
+                setRunMsg(
+                  j.status === 'DONE'
+                    ? `${lp?.collected ?? 0} article(s) collecté(s), ${lp?.duplicates ?? 0} doublon(s) ignoré(s)`
+                    : 'Erreur lors de la collecte'
+                );
+                await refetchJobs();
+                await refetchRaw();
+              }
+            } catch { /* */ }
+          }, 2000);
+        } else {
+          if (retries < 30) { retries++; setTimeout(poll, 1000); }
+        }
+      } catch {
+        if (retries < 30) { retries++; setTimeout(poll, 1000); }
+      }
+    };
+    poll();
+    return () => { cancelled = true; if (pollRef.current) clearInterval(pollRef.current); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [running, planId]);
 
   const handleRun = async () => {
     setRunning(true);
@@ -350,6 +443,36 @@ export default function CollectionPlanDetailPage() {
             )}
           </div>
         </div>
+
+        {/* Progress bar collecte */}
+        {running && collectionProgress && collectionProgress.totalSources > 0 && (
+          <div className="mb-6 rounded-2xl p-5" style={{ background: '#161b27', border: '1px solid #1e2535' }}>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold" style={{ color: '#60a5fa' }}>
+                Collecte en cours... {collectionProgress.currentSource && (
+                  <span style={{ color: '#6b7280' }}>— {collectionProgress.currentSource}</span>
+                )}
+              </p>
+              <span className="text-xs font-bold" style={{ color: '#9ca3af' }}>
+                {Math.round((collectionProgress.processedSources / collectionProgress.totalSources) * 100)}%
+              </span>
+            </div>
+            <div className="h-3 rounded-full overflow-hidden" style={{ background: '#1e2535' }}>
+              <div className="h-full rounded-full transition-all duration-500"
+                style={{
+                  width: `${Math.round((collectionProgress.processedSources / collectionProgress.totalSources) * 100)}%`,
+                  background: 'linear-gradient(90deg, #3b82f6, #6366f1)',
+                }} />
+            </div>
+            <div className="flex items-center justify-between mt-2">
+              <div className="flex gap-4 text-[10px]" style={{ color: '#6b7280' }}>
+                <span>{collectionProgress.processedSources}/{collectionProgress.totalSources} sources</span>
+                <span>{collectionProgress.collected} collectés</span>
+                <span>{collectionProgress.duplicates} doublons</span>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">

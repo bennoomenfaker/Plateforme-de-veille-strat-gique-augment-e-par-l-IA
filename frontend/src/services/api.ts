@@ -129,7 +129,8 @@ export const collectionPlansService = {
 
 export const collectionPlanService = {
   ...collectionPlansService,
-  getJobs: (planId: string) => api.get(`/collection/jobs/${planId}`),
+  getJobs: (planId: string) => api.get(`/collection-plans/${planId}/jobs`),
+  getJobById: (jobId: string) => api.get(`/collection-jobs/${jobId}`),
   getRawItems: (planId: string, page = 1, limit = 15) =>
     api.get(`/collection-plans/${planId}/raw-items`, { params: { page, limit } }),
   addSource: (planId: string, data: any) =>
@@ -148,7 +149,7 @@ export const collectionService = {
   triggerManual: (planId: string) =>
     api.post(`/collection-plans/${planId}/run`),
   getJobsByPlan: (planId: string) =>
-    api.get(`/collection/jobs/${planId}`),
+    api.get(`/collection-plans/${planId}/jobs`),
 };
 
 // --- 7. RAW ITEMS ---

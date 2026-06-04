@@ -109,6 +109,12 @@ export class CollectionManager {
       data: {
         status: 'RUNNING',
         started_at: new Date(),
+        logs: {
+          progress: { totalSources: plan.sources.length, processedSources: 0, currentSource: null },
+          collected: 0,
+          duplicates: 0,
+          sources: [],
+        },
       },
     });
 
@@ -249,6 +255,19 @@ export class CollectionManager {
         this.logger.log(
           `Source ${source.source_label}: ${sourceLog.items} items collectes`,
         );
+
+        // Mettre à jour la progression en temps réel
+        await this.prisma.collectionJob.update({
+          where: { id: job.id },
+          data: {
+            logs: {
+              progress: { totalSources: plan.sources.length, processedSources: logs.length, currentSource: source.source_label },
+              collected,
+              duplicates,
+              sources: logs,
+            },
+          },
+        });
       }
 
       // Mettre à jour le job DONE
@@ -292,6 +311,12 @@ export class CollectionManager {
       });
       throw err;
     }
+  }
+
+  async getJobById(jobId: string) {
+    return this.prisma.collectionJob.findUnique({
+      where: { id: jobId },
+    });
   }
 
   async getJobsByPlan(planId: string) {
