@@ -15,13 +15,28 @@ const STEPS = [
 ];
 
 const MONITORING_TYPES = [
-  { value: 'TECHNOLOGICAL', label: 'Veille technologique' },
-  { value: 'COMPETITIVE',   label: 'Veille concurrentielle' },
-  { value: 'REGULATORY',    label: 'Veille réglementaire' },
-  { value: 'GEOPOLITICAL',  label: 'Veille géopolitique' },
-  { value: 'ECONOMIC',      label: 'Veille économique' },
-  { value: 'SCIENTIFIC',    label: 'Veille scientifique' },
-  { value: 'CYBERSECURITY', label: 'Veille cybersécurité' },
+  { value: 'STRATEGIC',        label: 'Veille stratégique' },
+  { value: 'COMPETITIVE',      label: 'Veille concurrentielle' },
+  { value: 'SECTORAL',         label: 'Veille sectorielle' },
+  { value: 'COMMERCIAL',       label: 'Veille commerciale' },
+  { value: 'CUSTOMER',         label: 'Veille client' },
+  { value: 'PRODUCT',          label: 'Veille produit' },
+  { value: 'TECHNOLOGICAL',    label: 'Veille technologique' },
+  { value: 'INNOVATION',       label: 'Veille innovation' },
+  { value: 'SCIENTIFIC',       label: 'Veille scientifique' },
+  { value: 'REGULATORY_LEGAL', label: 'Veille réglementaire & juridique' },
+  { value: 'STANDARDIZATION',  label: 'Veille normative' },
+  { value: 'ENVIRONMENTAL',    label: 'Veille environnementale & écologique' },
+  { value: 'ECONOMIC',         label: 'Veille économique' },
+  { value: 'SOCIETAL',         label: 'Veille sociétale' },
+  { value: 'POLITICAL',        label: 'Veille politique' },
+  { value: 'GEOPOLITICAL',     label: 'Veille géopolitique' },
+  { value: 'REPUTATION',       label: 'Veille réputation & image de marque' },
+  { value: 'MEDIA_PRESS',      label: 'Veille médias & presse' },
+  { value: 'SOCIAL_MEDIA',     label: 'Veille social media / social listening' },
+  { value: 'ORGANIZATIONAL',   label: 'Veille organisationnelle (RH, talents, compétences)' },
+  { value: 'SUPPLY_CHAIN',     label: 'Veille supply chain / fournisseurs' },
+  { value: 'CYBERSECURITY',    label: 'Veille cybersécurité / sécurité de l\'information' },
 ];
 
 const SESSION_KEY = 'wizard_state';
@@ -57,7 +72,7 @@ export default function CreateProjectWizard() {
   const [perimeters,  setPerimeters]  = useState(session?.perimeters  ?? []);
   const [plans,       setPlans]       = useState(session?.plans       ?? []);
   const [projectForm, setProjectForm] = useState(session?.projectForm ?? {
-    nom: '', description: '', monitoring_type: 'TECHNOLOGICAL', folder_id: '',
+    nom: '', description: '', problematique: '', monitoring_type: 'STRATEGIC', folder_id: '',
   });
 
   const [objForm,    setObjForm]    = useState({ content: '' });
@@ -95,6 +110,7 @@ export default function CreateProjectWizard() {
     try {
       const res = await api.post('/projects', {
         nom: projectForm.nom, description: projectForm.description,
+        problematique: projectForm.problematique,
         monitoring_type: projectForm.monitoring_type,
         folder_id: projectForm.folder_id || null,
       });
@@ -295,6 +311,13 @@ export default function CreateProjectWizard() {
                   value={projectForm.description}
                   onChange={e => setProjectForm({ ...projectForm, description: e.target.value })}
                   placeholder="Objectif de ce projet..." />
+              </div>
+              <div>
+                {label('Problématique')}
+                <textarea style={{ ...inputStyle, resize: 'none' } as React.CSSProperties} rows={3}
+                  value={projectForm.problematique}
+                  onChange={e => setProjectForm({ ...projectForm, problematique: e.target.value })}
+                  placeholder="Quelle est la question centrale de ce projet de veille..." />
               </div>
               <div>
                 {label('Type de veille *')}

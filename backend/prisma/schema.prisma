@@ -57,12 +57,27 @@ enum StakeholderRole {
 }
 
 enum MonitoringType {
-  TECHNOLOGICAL
+  STRATEGIC
   COMPETITIVE
-  REGULATORY
-  GEOPOLITICAL
-  ECONOMIC
+  SECTORAL
+  COMMERCIAL
+  CUSTOMER
+  PRODUCT
+  TECHNOLOGICAL
+  INNOVATION
   SCIENTIFIC
+  REGULATORY_LEGAL
+  STANDARDIZATION
+  ENVIRONMENTAL
+  ECONOMIC
+  SOCIETAL
+  POLITICAL
+  GEOPOLITICAL
+  REPUTATION
+  MEDIA_PRESS
+  SOCIAL_MEDIA
+  ORGANIZATIONAL
+  SUPPLY_CHAIN
   CYBERSECURITY
 }
 
@@ -141,7 +156,8 @@ model Project {
   id              String         @id @default(uuid())
   nom             String
   description     String?
-  monitoring_type MonitoringType @default(TECHNOLOGICAL)
+  problematique   String?
+  monitoring_type MonitoringType @default(STRATEGIC)
   keywords        String[]
   frequency       Frequency      @default(DAILY)
 

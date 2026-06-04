@@ -8,13 +8,28 @@ import { useOrgRole } from '../../hooks/useOrgRole';
 
 // ─── Types monitoring ─────────────────────────────────────────────────────────
 const MONITORING_TYPES = [
-  { value: 'TECHNOLOGICAL', label: 'Veille technologique' },
-  { value: 'COMPETITIVE',   label: 'Veille concurrentielle' },
-  { value: 'REGULATORY',    label: 'Veille réglementaire' },
-  { value: 'GEOPOLITICAL',  label: 'Veille géopolitique' },
-  { value: 'ECONOMIC',      label: 'Veille économique' },
-  { value: 'SCIENTIFIC',    label: 'Veille scientifique' },
-  { value: 'CYBERSECURITY', label: 'Veille cybersécurité' },
+  { value: 'STRATEGIC',        label: 'Veille stratégique' },
+  { value: 'COMPETITIVE',      label: 'Veille concurrentielle' },
+  { value: 'SECTORAL',         label: 'Veille sectorielle' },
+  { value: 'COMMERCIAL',       label: 'Veille commerciale' },
+  { value: 'CUSTOMER',         label: 'Veille client' },
+  { value: 'PRODUCT',          label: 'Veille produit' },
+  { value: 'TECHNOLOGICAL',    label: 'Veille technologique' },
+  { value: 'INNOVATION',       label: 'Veille innovation' },
+  { value: 'SCIENTIFIC',       label: 'Veille scientifique' },
+  { value: 'REGULATORY_LEGAL', label: 'Veille réglementaire & juridique' },
+  { value: 'STANDARDIZATION',  label: 'Veille normative' },
+  { value: 'ENVIRONMENTAL',    label: 'Veille environnementale & écologique' },
+  { value: 'ECONOMIC',         label: 'Veille économique' },
+  { value: 'SOCIETAL',         label: 'Veille sociétale' },
+  { value: 'POLITICAL',        label: 'Veille politique' },
+  { value: 'GEOPOLITICAL',     label: 'Veille géopolitique' },
+  { value: 'REPUTATION',       label: 'Veille réputation & image de marque' },
+  { value: 'MEDIA_PRESS',      label: 'Veille médias & presse' },
+  { value: 'SOCIAL_MEDIA',     label: 'Veille social media / social listening' },
+  { value: 'ORGANIZATIONAL',   label: 'Veille organisationnelle (RH, talents, compétences)' },
+  { value: 'SUPPLY_CHAIN',     label: 'Veille supply chain / fournisseurs' },
+  { value: 'CYBERSECURITY',    label: 'Veille cybersécurité / sécurité de l\'information' },
 ];
 
 const MONITORING_LABELS: Record<string, string> = Object.fromEntries(
@@ -57,7 +72,8 @@ export default function ProjectDetailPage() {
   const [editForm, setEditForm] = useState({
     nom: '',
     description: '',
-    monitoring_type: 'TECHNOLOGICAL',
+    problematique: '',
+    monitoring_type: 'STRATEGIC',
   });
 
   // ── Queries ─────────────────────────────────────────────────────────────────
@@ -86,6 +102,7 @@ export default function ProjectDetailPage() {
       setEditForm({
         nom:             project.nom             || '',
         description:     project.description     || '',
+        problematique:   project.problematique   || '',
         monitoring_type: project.monitoring_type || 'TECHNOLOGICAL',
       });
     }
@@ -295,6 +312,14 @@ export default function ProjectDetailPage() {
             <p className="text-sm" style={{ color: '#6b7280' }}>
               {project?.description || 'Aucune description'}
             </p>
+            {project?.problematique && (
+              <div className="mt-3 p-3 rounded-xl" style={{ background: 'rgba(99,102,241,0.05)', border: '1px solid rgba(99,102,241,0.15)' }}>
+                <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: '#a5b4fc' }}>
+                  Problématique
+                </p>
+                <p className="text-sm leading-relaxed" style={{ color: '#c7d2fe' }}>{project.problematique}</p>
+              </div>
+            )}
 
             {/* Keywords */}
             <div className="flex flex-wrap gap-2 mt-2">
@@ -543,6 +568,18 @@ export default function ProjectDetailPage() {
                     rows={3}
                     style={{ ...inputStyle, resize: 'none' } as React.CSSProperties}
                     placeholder="Description du projet..."
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5"
+                    style={{ color: '#9ca3af' }}>Problématique</label>
+                  <textarea
+                    value={editForm.problematique}
+                    onChange={e => setEditForm({ ...editForm, problematique: e.target.value })}
+                    rows={3}
+                    style={{ ...inputStyle, resize: 'none' } as React.CSSProperties}
+                    placeholder="Problématique centrale du projet..."
                   />
                 </div>
 

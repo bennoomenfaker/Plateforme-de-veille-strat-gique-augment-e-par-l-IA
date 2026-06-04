@@ -46,7 +46,8 @@ export class ProjectsService {
       data: {
         nom: data.nom,
         description: data.description,
-        monitoring_type: data.monitoring_type || 'TECHNOLOGICAL',
+        problematique: data.problematique,
+        monitoring_type: data.monitoring_type || 'STRATEGIC',
         keywords: data.keywords || [],
         frequency: data.frequency || 'DAILY',
         end_date: null,
@@ -78,7 +79,8 @@ export class ProjectsService {
       data: {
         nom: data.nom,
         description: data.description,
-        monitoring_type: data.monitoring_type || 'TECHNOLOGICAL',
+        problematique: data.problematique,
+        monitoring_type: data.monitoring_type || 'STRATEGIC',
         keywords: data.keywords || [],
         frequency: data.frequency || 'DAILY',
         end_date: null,
@@ -232,6 +234,7 @@ export class ProjectsService {
       data: {
         nom: data.nom,
         description: data.description,
+        problematique: data.problematique,
         monitoring_type: data.monitoring_type,
         keywords: data.keywords,
         frequency: data.frequency,
