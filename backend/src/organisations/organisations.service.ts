@@ -8,6 +8,11 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { OrgAccessService } from '../common/org-access.service';
 import { MailService } from '../auth-mail/mail.service';
+import {
+  normalizeEmail,
+  assertValidPassword,
+  BCRYPT_ROUNDS,
+} from '../auth/auth.utils';
 import * as crypto from 'crypto';
 import * as bcrypt from 'bcrypt';
 
@@ -198,18 +203,20 @@ export class OrganisationsService {
       );
     }
 
+    const email = normalizeEmail(data.email);
     let targetUser = await this.prisma.user.findUnique({
-      where: { email: data.email },
+      where: { email },
     });
 
     if (!targetUser) {
-      const tempPassword =
-        data.mot_de_passe || crypto.randomBytes(8).toString('hex');
-      const hashedPassword = await bcrypt.hash(tempPassword, 10);
+      const tempPassword = data.mot_de_passe
+        ? assertValidPassword(data.mot_de_passe, { email, nom: data.nom })
+        : crypto.randomBytes(8).toString('hex');
+      const hashedPassword = await bcrypt.hash(tempPassword, BCRYPT_ROUNDS);
       targetUser = await this.prisma.user.create({
         data: {
           nom: data.nom,
-          email: data.email,
+          email,
           mot_de_passe: hashedPassword,
           type_utilisateur: 'ORGANISATION',
           statut: 'ACTIF',
@@ -248,8 +255,9 @@ export class OrganisationsService {
       throw new BadRequestException('Seul le créateur est propriétaire');
     }
 
+    const email = normalizeEmail(data.email);
     const existingUser = await this.prisma.user.findUnique({
-      where: { email: data.email },
+      where: { email },
     });
     if (existingUser) {
       const alreadyMember = await this.prisma.membreOrganisation.findFirst({
@@ -263,7 +271,7 @@ export class OrganisationsService {
       await this.prisma.invitationOrganisation.findFirst({
         where: {
           organisation_id: organisationId,
-          email: data.email,
+          email,
           status: 'PENDING',
         },
       });
@@ -276,7 +284,7 @@ export class OrganisationsService {
     const invitation = await this.prisma.invitationOrganisation.create({
       data: {
         organisation_id: organisationId,
-        email: data.email,
+        email,
         role: data.role || 'EQUIPE_VEILLE',
         token,
         expires_at: expires,
@@ -296,7 +304,7 @@ export class OrganisationsService {
     });
     this.mailService
       .sendInvitationEmail(
-        data.email,
+        email,
         token,
         org?.nom || 'son organisation',
         data.role || 'EQUIPE_VEILLE',
@@ -307,7 +315,7 @@ export class OrganisationsService {
       message: 'Invitation envoyée',
       invitation_token: token,
       invitation_link: `/invitation/${token}`,
-      email: data.email,
+      email,
       role: data.role || 'EQUIPE_VEILLE',
       expires_at: expires,
       invitation,

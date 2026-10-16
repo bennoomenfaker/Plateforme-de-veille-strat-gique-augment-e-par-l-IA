@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { normalizeEmail } from '../auth/auth.utils';
 
 @Injectable()
 export class AdminService {
@@ -113,7 +114,9 @@ export class AdminService {
       where: { id: userId },
       data: {
         ...(data.nom !== undefined ? { nom: data.nom } : {}),
-        ...(data.email !== undefined ? { email: data.email } : {}),
+        ...(data.email !== undefined
+          ? { email: normalizeEmail(data.email) }
+          : {}),
         ...(data.statut !== undefined ? { statut: data.statut as any } : {}),
         ...(data.type_utilisateur !== undefined
           ? { type_utilisateur: data.type_utilisateur as any }

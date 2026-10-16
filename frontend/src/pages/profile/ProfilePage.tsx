@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import Layout from '../../components/layout/Layout';
 import { authService } from '../../services/api';
+import { passwordError, PASSWORD_HELP } from '../../utils/password';
 
 export default function ProfilePage() {
   const { user, login, token } = useAuth();
@@ -70,6 +71,12 @@ export default function ProfilePage() {
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true); setMsg(''); setError('');
+    const pwdError = passwordError(newPassword);
+    if (pwdError) {
+      setError(pwdError);
+      setLoading(false);
+      return;
+    }
     try {
       await authService.changePassword({ currentPassword, newPassword });
       setMsg('Mot de passe modifié avec succès');
@@ -205,6 +212,7 @@ export default function ProfilePage() {
                 onChange={e => setNewPassword(e.target.value)}
                 placeholder="••••••••"
               />
+              <p className="text-xs mt-1.5" style={{ color: '#6b7280' }}>{PASSWORD_HELP}</p>
             </div>
             <button
               type="submit"

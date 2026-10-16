@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../../services/api';
+import { passwordError, PASSWORD_HELP } from '../../utils/password';
 
 export default function InvitationPage() {
   const { token } = useParams();
@@ -43,6 +44,11 @@ export default function InvitationPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    const pwdError = passwordError(form.mot_de_passe);
+    if (pwdError) {
+      setError(pwdError);
+      return;
+    }
     if (form.mot_de_passe !== form.confirm) {
       setError('Les mots de passe ne correspondent pas');
       return;
@@ -152,6 +158,7 @@ export default function InvitationPage() {
                 )}
               </button>
             </div>
+            <p className="text-xs text-gray-400 mt-1.5">{PASSWORD_HELP}</p>
           </div>
 
           <div>

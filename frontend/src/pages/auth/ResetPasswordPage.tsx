@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { authService, formatApiError } from '../../services/api';
+import { passwordError, PASSWORD_HELP } from '../../utils/password';
 
 export default function ResetPasswordPage() {
   const { token } = useParams<{ token: string }>();
@@ -14,8 +15,9 @@ export default function ResetPasswordPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (form.new_password.length < 8) {
-      setError('Le mot de passe doit contenir au moins 8 caractères');
+    const pwdError = passwordError(form.new_password);
+    if (pwdError) {
+      setError(pwdError);
       return;
     }
     if (form.new_password !== form.confirm) {
@@ -79,7 +81,7 @@ export default function ResetPasswordPage() {
                     required
                     value={form.new_password}
                     onChange={e => { setForm({ ...form, new_password: e.target.value }); setError(''); }}
-                    placeholder="Minimum 8 caractères"
+                    placeholder="Minimum 12 caractères"
                     className="w-full outline-none"
                     style={{
                       background: '#0f1117', border: '1px solid #1e2535',
@@ -104,6 +106,7 @@ export default function ResetPasswordPage() {
                     )}
                   </button>
                 </div>
+                <p className="text-xs mt-1.5" style={{ color: '#6b7280' }}>{PASSWORD_HELP}</p>
               </div>
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5"

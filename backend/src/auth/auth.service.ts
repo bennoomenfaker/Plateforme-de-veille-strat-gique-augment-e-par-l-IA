@@ -8,6 +8,11 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import { MailService } from '../auth-mail/mail.service';
+import {
+  normalizeEmail,
+  assertValidPassword,
+  BCRYPT_ROUNDS,
+} from './auth.utils';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 
@@ -25,18 +30,20 @@ export class AuthService {
 
   // ─── REGISTER INDIVIDUEL ─────────────────────────────────────────────────────
   async register(data: any) {
+    const email = normalizeEmail(data.email);
     const existing = await this.prisma.user.findUnique({
-      where: { email: data.email },
+      where: { email },
     });
     if (existing) throw new ConflictException('Email déjà utilisé');
 
-    const password =
-      data.mot_de_passe || crypto.randomBytes(12).toString('hex');
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const password = data.mot_de_passe
+      ? assertValidPassword(data.mot_de_passe, { email, nom: data.nom })
+      : crypto.randomBytes(12).toString('hex');
+    const hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS);
     const user = await this.prisma.user.create({
       data: {
         nom: data.nom,
-        email: data.email,
+        email,
         mot_de_passe: hashedPassword,
         type_utilisateur: 'INDIVIDUEL',
         statut: 'ACTIF',
@@ -54,15 +61,17 @@ export class AuthService {
 
   // ─── REGISTER ORGANISATION (création ou adhésion) ───────────────────────────
   async registerOrganisation(data: any) {
+    const email = normalizeEmail(data.email);
     const existing = await this.prisma.user.findUnique({
-      where: { email: data.email },
+      where: { email },
     });
     if (existing) throw new ConflictException('Email déjà utilisé');
 
     const mode = data.mode === 'JOIN' ? 'JOIN' : 'CREATE';
-    const password =
-      data.mot_de_passe || crypto.randomBytes(12).toString('hex');
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const password = data.mot_de_passe
+      ? assertValidPassword(data.mot_de_passe, { email, nom: data.nom })
+      : crypto.randomBytes(12).toString('hex');
+    const hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS);
 
     if (mode === 'CREATE') {
       const orgExists = await this.prisma.organisation.findUnique({
@@ -77,7 +86,7 @@ export class AuthService {
       const user = await this.prisma.user.create({
         data: {
           nom: data.nom,
-          email: data.email,
+          email,
           mot_de_passe: hashedPassword,
           type_utilisateur: 'ORGANISATION',
           statut: 'ACTIF',
@@ -157,7 +166,7 @@ export class AuthService {
     const user = await this.prisma.user.create({
       data: {
         nom: data.nom,
-        email: data.email,
+        email,
         mot_de_passe: hashedPassword,
         type_utilisateur: 'ORGANISATION',
         statut: 'ACTIF',
@@ -211,12 +220,12 @@ export class AuthService {
     }
 
     const user = await this.prisma.user.findUnique({
-      where: { email: invitation.email },
+      where: { email: normalizeEmail(invitation.email) },
     });
 
     return {
       valid: true,
-      email: invitation.email,
+      email: normalizeEmail(invitation.email),
       nom_organisation: invitation.organisation.nom,
       role: invitation.role,
       userExists: !!user,
@@ -246,7 +255,7 @@ export class AuthService {
     }
 
     const user = await this.prisma.user.findUnique({
-      where: { email: invitation.email },
+      where: { email: normalizeEmail(invitation.email) },
     });
     if (!user) {
       throw new BadRequestException(
@@ -313,17 +322,23 @@ export class AuthService {
     }
 
     let user = await this.prisma.user.findUnique({
-      where: { email: invitation.email },
+      where: { email: normalizeEmail(invitation.email) },
     });
 
     if (!user) {
       if (!data.mot_de_passe)
         throw new BadRequestException('Mot de passe requis');
-      const hashedPassword = await bcrypt.hash(data.mot_de_passe, 10);
+      const hashedPassword = await bcrypt.hash(
+        assertValidPassword(data.mot_de_passe, {
+          email: normalizeEmail(invitation.email),
+          nom: data.nom,
+        }),
+        BCRYPT_ROUNDS,
+      );
       user = await this.prisma.user.create({
         data: {
           nom: data.nom,
-          email: invitation.email,
+          email: normalizeEmail(invitation.email),
           mot_de_passe: hashedPassword,
           type_utilisateur: 'ORGANISATION',
           statut: 'ACTIF',
@@ -371,7 +386,7 @@ export class AuthService {
   // ─── LOGIN ───────────────────────────────────────────────────────────────────
   async login(data: any) {
     const user = await this.prisma.user.findUnique({
-      where: { email: data.email },
+      where: { email: normalizeEmail(data.email) },
       include: {
         memberships: {
           include: { organisation: true },
@@ -379,14 +394,21 @@ export class AuthService {
       },
     });
 
-    if (!user) throw new UnauthorizedException('Email non trouvé');
+    // Message volontairement générique pour ne pas révéler si l'email existe
+    // (protection contre l'énumération de comptes / user enumeration).
+    const invalidCredentials = () =>
+      new UnauthorizedException('Email ou mot de passe incorrect');
+
+    if (!user) throw invalidCredentials();
+
+    const isValid = await bcrypt.compare(data.mot_de_passe, user.mot_de_passe);
+    if (!isValid) throw invalidCredentials();
+
+    // Le statut du compte n'est révélé qu'une fois l'identité prouvée.
     if (user.statut === 'SUSPENDU')
       throw new UnauthorizedException('Compte suspendu');
     if (user.statut === 'INACTIF')
       throw new UnauthorizedException('Compte inactif');
-
-    const isValid = await bcrypt.compare(data.mot_de_passe, user.mot_de_passe);
-    if (!isValid) throw new UnauthorizedException('Mot de passe incorrect');
 
     const payload = {
       sub: user.id,
@@ -456,13 +478,12 @@ export class AuthService {
     if (!valid) {
       throw new BadRequestException('Mot de passe actuel incorrect');
     }
-    if (!data.newPassword || data.newPassword.length < 8) {
-      throw new BadRequestException(
-        'Le nouveau mot de passe doit contenir au moins 8 caractères',
-      );
-    }
+    const newPassword = assertValidPassword(data.newPassword, {
+      email: user.email,
+      nom: user.nom,
+    });
 
-    const hashedPassword = await bcrypt.hash(data.newPassword, 10);
+    const hashedPassword = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
     await this.prisma.user.update({
       where: { id: userId },
       data: { mot_de_passe: hashedPassword },
@@ -478,7 +499,7 @@ export class AuthService {
     const SUPER_ADMIN_PASSWORD =
       process.env.SUPER_ADMIN_PASSWORD || 'SuperAdmin2024!';
 
-    if (data.email !== SUPER_ADMIN_EMAIL)
+    if (normalizeEmail(data.email) !== normalizeEmail(SUPER_ADMIN_EMAIL))
       throw new UnauthorizedException('Accès refusé');
     if (data.password !== SUPER_ADMIN_PASSWORD)
       throw new UnauthorizedException('Accès refusé');
@@ -525,7 +546,9 @@ export class AuthService {
 
   // ─── FORGOT PASSWORD ─────────────────────────────────────────────────────────
   async requestPasswordReset(email: string) {
-    const user = await this.prisma.user.findUnique({ where: { email } });
+    const user = await this.prisma.user.findUnique({
+      where: { email: normalizeEmail(email) },
+    });
     if (!user) return { message: 'Si cet email existe, un lien a été envoyé' };
     const rawToken = crypto.randomBytes(32).toString('hex');
     const tokenHash = crypto
@@ -553,12 +576,8 @@ export class AuthService {
       },
     });
     if (!stored) throw new BadRequestException('Token invalide ou expiré');
-    if (newPassword.length < 8) {
-      throw new BadRequestException(
-        'Le mot de passe doit contenir au moins 8 caractères',
-      );
-    }
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    const password = assertValidPassword(newPassword);
+    const hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS);
     await this.prisma.user.update({
       where: { id: stored.user_id },
       data: { mot_de_passe: hashedPassword },

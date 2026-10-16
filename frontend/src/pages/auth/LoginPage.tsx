@@ -28,9 +28,7 @@ export default function LoginPage() {
         err && typeof err === 'object' && 'response' in err
           ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
           : undefined;
-      if (msg === 'Email non trouvé') setToast({ message: 'Email inexistant', type: 'error' });
-      else if (msg === 'Mot de passe incorrect') setToast({ message: 'Mot de passe incorrect', type: 'error' });
-      else if (msg === 'Compte suspendu') setToast({ message: 'Votre compte a été suspendu', type: 'error' });
+      if (msg === 'Compte suspendu') setToast({ message: 'Votre compte a été suspendu', type: 'error' });
       else if (msg === 'Compte inactif') setToast({ message: 'Votre compte est inactif', type: 'error' });
       else setToast({ message: formatApiError(err, 'Email ou mot de passe incorrect'), type: 'error' });
     } finally {
